@@ -1,0 +1,91 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Calistoga&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Noto+Serif+SC:wght@400;700&display=swap');
+
+:root {
+  --font-display: 'Calistoga', serif;
+  --font-body: 'Inter', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+  --font-doc: 'Noto Serif SC', serif;
+  --color-accent: #0052ff;
+  --color-accent-secondary: #4d7cff;
+  --color-slate-900: #0f172a;
+  --color-bg: #fafafa;
+}
+
+html,
+body {
+  padding: 0;
+  margin: 0;
+  background-color: var(--color-bg);
+  font-family: var(--font-body);
+  color: var(--color-slate-900);
+  overflow-x: hidden;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-display);
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+.font-mono-custom {
+  font-family: var(--font-mono);
+}
+
+.font-doc {
+  font-family: var(--font-doc);
+}
+
+.text-gradient {
+  background: linear-gradient(135deg, #0052ff 0%, #4d7cff 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.bg-gradient-primary {
+  background: linear-gradient(135deg, #0052ff 0%, #4d7cff 100%);
+}
+
+.card-hover-effect {
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.card-hover-effect:hover {
+  transform: translateY(-4px);
+  box-shadow:
+    0 20px 25px -5px rgba(0, 52, 255, 0.15),
+    0 8px 10px -6px rgba(0, 52, 255, 0.1);
+}
+
+.hero-pattern {
+  background-image: radial-gradient(circle, #0052ff 1px, transparent 1px);
+  background-size: 40px 40px;
+  opacity: 0.03;
+}
