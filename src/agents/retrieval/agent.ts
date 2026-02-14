@@ -1,9 +1,10 @@
 import { assertRetrievalInput } from '@/agents/retrieval/schema';
 import { retrievalTools } from '@/agents/retrieval/tools';
 import type { RetrievalInput, RetrievalOutput } from '@/agents/retrieval/types';
+import { TavilyClient } from '@/services/search/tavily-client';
 
 export class RetrievalAgent {
-  run(input: RetrievalInput): RetrievalOutput {
+  async run(input: RetrievalInput): Promise<RetrievalOutput> {
     assertRetrievalInput(input);
 
     const sectionByIndex: Array<'立项依据' | '研究内容' | '研究基础'> = ['立项依据', '研究内容', '研究基础'];
@@ -76,6 +77,34 @@ export class RetrievalAgent {
         selected: false
       }
     ];
+
+    const apiKey = process.env.TAVILY_API_KEY || '';
+    const useRealSearch = process.env.USE_REAL_SEARCH === 'true';
+
+    if (apiKey && useRealSearch) {
+      try {
+        const client = new TavilyClient(apiKey);
+        const query = `${input.projectTitle} ${input.outlineKeywords.join(' ')}`.trim();
+        const results = await client.search(query);
+        const mapped = results.map((item, idx) => ({
+          id: `tavily-${Date.now()}-${idx}`,
+          title: item.title,
+          url: item.url,
+          source: 'Tavily',
+          abstract: item.content,
+          year: new Date().getFullYear().toString(),
+          sectionKey: sectionByIndex[idx % sectionByIndex.length],
+          score: Math.round((item.score || 0.5) * 100),
+          selected: idx < 3
+        }));
+
+        return {
+          items: retrievalTools.sortByScore(retrievalTools.filterLowQuality(mapped))
+        };
+      } catch {
+        // Fallback to mock items.
+      }
+    }
 
     return {
       items: retrievalTools.sortByScore(retrievalTools.filterLowQuality(mockItems))

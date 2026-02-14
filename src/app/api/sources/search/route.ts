@@ -10,7 +10,7 @@ export async function POST(request: Request) {
   };
 
   const agent = new RetrievalAgent();
-  const output = agent.run({
+  const output = await agent.run({
     projectTitle: body.projectTitle || '未命名课题',
     outlineKeywords: body.outlineKeywords || []
   });

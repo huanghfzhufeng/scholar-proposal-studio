@@ -40,7 +40,7 @@ export async function POST(request: Request) {
   }
 
   const agent = new DraftAgent();
-  const output = agent.run({
+  const output = await agent.run({
     title: body.title || '未命名课题',
     outlineText: body.outlineText || '待补充',
     sourceText: body.sourceText || '待补充'

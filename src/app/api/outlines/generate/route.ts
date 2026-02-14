@@ -10,7 +10,7 @@ export async function POST(request: Request) {
   };
 
   const agent = new OutlineAgent();
-  const output = agent.run({
+  const output = await agent.run({
     projectTitle: body.projectTitle || '未命名课题',
     interviewSummary: body.interviewSummary || '待补充'
   });

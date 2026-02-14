@@ -11,7 +11,7 @@ export async function POST(request: Request) {
   };
 
   const agent = new InterviewAgent();
-  const output = agent.run({
+  const output = await agent.run({
     projectTitle: body.projectTitle || '未命名课题',
     history: body.history || [],
     userAnswer: body.userAnswer
