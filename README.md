@@ -25,6 +25,45 @@ npm run dev
 npm run test
 ```
 
+## Docker 启动
+
+1. 可选：在项目根目录创建 `.env`（用于覆盖默认参数）
+
+```bash
+cat > .env <<'EOF'
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=postgres
+POSTGRES_DB=scholar_proposal_studio
+USE_REAL_LLM=false
+MINIMAX_API_KEY=
+USE_REAL_SEARCH=false
+TAVILY_API_KEY=
+EOF
+```
+
+2. 构建并启动
+
+```bash
+docker compose up --build -d
+```
+
+3. 访问系统
+
+- 应用：[http://localhost:3000](http://localhost:3000)
+- 数据库：`localhost:5432`
+
+4. 停止服务
+
+```bash
+docker compose down
+```
+
+5. 如需清空数据库卷（危险操作）
+
+```bash
+docker compose down -v
+```
+
 ## 环境变量
 
 复制 `.env.example` 到 `.env.local` 并按需填写。
