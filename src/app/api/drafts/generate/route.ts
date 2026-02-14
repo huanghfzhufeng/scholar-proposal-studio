@@ -12,6 +12,7 @@ export async function POST(request: Request) {
     outlineText?: string;
     sourceText?: string;
     retryCount?: number;
+    stream?: boolean;
   };
 
   if (!body.projectId) {
@@ -40,6 +41,68 @@ export async function POST(request: Request) {
     );
   }
 
+  // Stream mode
+  if (body.stream) {
+    const agent = new DraftAgent();
+    const encoder = new TextEncoder();
+    let fullText = '';
+
+    const stream = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        try {
+          const gen = agent.runStream({
+            title: body.title || '未命名课题',
+            outlineText: body.outlineText || '待补充',
+            sourceText: body.sourceText || '待补充'
+          });
+
+          for await (const event of gen) {
+            if (event.type === 'delta') {
+              fullText += event.data;
+              controller.enqueue(encoder.encode(`event: delta\ndata: ${JSON.stringify({ text: event.data })}\n\n`));
+            } else if (event.type === 'done') {
+              // Post-validation
+              const allowedSourceIds = new Set(selectedItems.map((item) => item.id));
+              const citationIds = draftTools.extractCitationIds(fullText);
+              const unverifiedSourceIds = citationIds.filter((id) => !allowedSourceIds.has(id));
+
+              const validationResult = {
+                content: fullText,
+                sectionCountMap,
+                hasUnverified: unverifiedSourceIds.length > 0,
+                unverifiedSourceIds
+              };
+
+              controller.enqueue(encoder.encode(`event: done\ndata: ${JSON.stringify(validationResult)}\n\n`));
+
+              // Persist draft
+              if (body.projectId) {
+                await projectStore.saveDraft(body.projectId, { content: fullText }, {
+                  draftContent: fullText,
+                  hasGeneratedDraft: true
+                });
+              }
+            }
+          }
+        } catch {
+          controller.enqueue(encoder.encode(`event: error\ndata: ${JSON.stringify({ error: 'Stream failed' })}\n\n`));
+        } finally {
+          controller.close();
+        }
+      }
+    });
+
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'Cache-Control': 'no-cache, no-transform',
+        Connection: 'keep-alive',
+        'X-Accel-Buffering': 'no'
+      }
+    });
+  }
+
+  // Non-stream mode (kept for backward compatibility)
   const agent = new DraftAgent();
   const output = await agent.run({
     title: body.title || '未命名课题',
@@ -91,3 +154,4 @@ export async function POST(request: Request) {
     }
   });
 }
+

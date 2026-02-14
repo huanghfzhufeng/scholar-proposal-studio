@@ -22,13 +22,16 @@ export class DraftAgent {
     if (apiKey && useRealLlm) {
       try {
         const client = new MiniMaxClient(apiKey);
-        const result = await client.chat([
-          { role: 'system', content: DRAFT_SYSTEM_PROMPT },
-          {
-            role: 'user',
-            content: buildDraftPrompt(input.title, input.outlineText, input.sourceText)
-          }
-        ]);
+        const result = await client.chat(
+          [
+            { role: 'system', content: DRAFT_SYSTEM_PROMPT },
+            {
+              role: 'user',
+              content: buildDraftPrompt(input.title, input.outlineText, input.sourceText)
+            }
+          ],
+          8192
+        );
 
         if (result.text?.trim()) {
           const normalized = draftTools.normalizeParagraphs(result.text);
@@ -55,4 +58,43 @@ export class DraftAgent {
       content: draftTools.normalizeParagraphs(groundedFallback)
     };
   }
+
+  async *runStream(input: DraftInput): AsyncGenerator<{ type: 'delta' | 'done'; data: string }> {
+    assertDraftInput(input);
+
+    const groundedFallback = draftTools.buildGroundedDraft(input.title, input.sourceText);
+
+    const apiKey = process.env.MINIMAX_API_KEY || '';
+    const useRealLlm = process.env.USE_REAL_LLM === 'true';
+
+    if (apiKey && useRealLlm) {
+      try {
+        const client = new MiniMaxClient(apiKey);
+        const stream = client.chatStream(
+          [
+            { role: 'system', content: DRAFT_SYSTEM_PROMPT },
+            { role: 'user', content: buildDraftPrompt(input.title, input.outlineText, input.sourceText) }
+          ],
+          8192
+        );
+
+        for await (const chunk of stream) {
+          yield { type: 'delta', data: chunk };
+        }
+      } catch {
+        // Fallback: emit template at once
+        yield { type: 'delta', data: draftTools.normalizeParagraphs(groundedFallback) };
+      }
+    } else {
+      // Mock mode: simulate streaming by emitting in small batches
+      const content = draftTools.normalizeParagraphs(groundedFallback);
+      const chars = content.split('');
+      for (let i = 0; i < chars.length; i += 5) {
+        yield { type: 'delta', data: chars.slice(i, i + 5).join('') };
+      }
+    }
+
+    yield { type: 'done', data: '' };
+  }
 }
+

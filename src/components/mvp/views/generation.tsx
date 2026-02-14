@@ -4,10 +4,13 @@ import { ArrowLeft, ArrowRight, CheckCircle2, LoaderCircle, PlayCircle } from 'l
 import { Button } from '@/components/mvp/ui';
 import type { GenerationStep } from '@/components/mvp/types';
 
+import { useEffect, useRef } from 'react';
+
 type GenerationViewProps = {
   steps: GenerationStep[];
   isGenerating: boolean;
   hasGeneratedDraft: boolean;
+  draftContent?: string;
   onBackSources: () => void;
   onStartGeneration: () => void;
   onGoEditor: () => void;
@@ -17,10 +20,19 @@ export const GenerationView = ({
   steps,
   isGenerating,
   hasGeneratedDraft,
+  draftContent,
   onBackSources,
   onStartGeneration,
   onGoEditor
 }: GenerationViewProps) => {
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [draftContent]);
+
   return (
     <div className="mx-auto w-full max-w-4xl animate-in p-6 fade-in lg:p-12">
       <div className="mb-8 flex flex-col items-start justify-between gap-4 md:flex-row md:items-center">
@@ -42,24 +54,34 @@ export const GenerationView = ({
         </div>
       </div>
 
-      <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        {steps.map((step, idx) => (
-          <div key={step.key} className="flex items-center gap-4 rounded-lg border border-slate-100 bg-slate-50 px-4 py-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-slate-500">
-              {step.status === 'running' ? (
-                <LoaderCircle className="h-4 w-4 animate-spin text-[#0052FF]" />
-              ) : step.status === 'done' ? (
-                <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-              ) : (
-                <span className="font-mono-custom text-xs">{idx + 1}</span>
-              )}
+      <div className="grid gap-6 md:grid-cols-2">
+        <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm h-fit">
+          {steps.map((step, idx) => (
+            <div key={step.key} className="flex items-center gap-4 rounded-lg border border-slate-100 bg-slate-50 px-4 py-3">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-slate-500">
+                {step.status === 'running' ? (
+                  <LoaderCircle className="h-4 w-4 animate-spin text-[#0052FF]" />
+                ) : step.status === 'done' ? (
+                  <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                ) : (
+                  <span className="font-mono-custom text-xs">{idx + 1}</span>
+                )}
+              </div>
+              <div className="flex-1 text-sm text-slate-700">{step.title}</div>
+              <div className="text-xs text-slate-400">
+                {step.status === 'idle' ? '待执行' : step.status === 'running' ? '执行中' : '已完成'}
+              </div>
             </div>
-            <div className="flex-1 text-sm text-slate-700">{step.title}</div>
-            <div className="text-xs text-slate-400">
-              {step.status === 'idle' ? '待执行' : step.status === 'running' ? '执行中' : '已完成'}
-            </div>
+          ))}
+        </div>
+
+        <div className="relative flex h-[320px] flex-col rounded-2xl border border-slate-200 bg-slate-50 p-4 shadow-inner">
+          <div className="mb-2 text-xs font-medium text-slate-500">实时预览</div>
+          <div ref={scrollRef} className="flex-1 overflow-y-auto whitespace-pre-wrap rounded-lg bg-white p-4 text-sm leading-relaxed text-slate-700 shadow-sm font-serif">
+            {draftContent || <span className="text-slate-300 italic">等待生成...</span>}
+            {isGenerating && <span className="animate-pulse inline-block w-1.5 h-4 bg-indigo-500 ml-1 align-middle"></span>}
           </div>
-        ))}
+        </div>
       </div>
 
       {hasGeneratedDraft ? (

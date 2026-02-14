@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowDown, ArrowLeft, ArrowUp, CheckCircle2, GitCompare, Plus, RefreshCw, RotateCcw, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowLeft, ArrowUp, CheckCircle2, GitCompare, Plus, RefreshCw, RotateCcw, Trash2, LoaderCircle } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Badge, Button } from '@/components/mvp/ui';
 import type { OutlineCandidate, OutlineVersion } from '@/components/mvp/types';
@@ -9,6 +9,7 @@ type OutlineViewProps = {
   candidates: OutlineCandidate[];
   activeIndex: number;
   versions: OutlineVersion[];
+  isGenerating?: boolean;
   onBackDashboard: () => void;
   onSetActiveIndex: (index: number) => void;
   onRegenerate: () => void;
@@ -39,6 +40,7 @@ export const OutlineView = ({
   candidates,
   activeIndex,
   versions,
+  isGenerating = false,
   onBackDashboard,
   onSetActiveIndex,
   onRegenerate,
@@ -64,7 +66,17 @@ export const OutlineView = ({
   const diffSummary = compareOutlineText(versionMap.get(leftVersionId)?.outline, versionMap.get(rightVersionId)?.outline);
 
   return (
-    <div className="mx-auto w-full max-w-7xl animate-in p-6 fade-in lg:p-12">
+    <div className="relative mx-auto w-full max-w-7xl animate-in p-6 fade-in lg:p-12">
+      {isGenerating && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center rounded-3xl bg-white/80 backdrop-blur-sm">
+          <div className="flex flex-col items-center gap-4">
+            <LoaderCircle className="h-10 w-10 animate-spin text-indigo-600" />
+            <p className="text-lg font-medium text-slate-800">正在构思大纲方案...</p>
+            <p className="text-sm text-slate-500">AI 正在根据访谈内容生成多维度提案</p>
+          </div>
+        </div>
+      )}
+
       <div className="mb-8 flex flex-col items-start justify-between gap-4 md:flex-row md:items-center">
         <div>
           <Button variant="ghost" size="sm" icon={ArrowLeft} onClick={onBackDashboard} className="-ml-4 mb-2">
@@ -91,11 +103,10 @@ export const OutlineView = ({
               type="button"
               key={candidate.id}
               onClick={() => onSetActiveIndex(idx)}
-              className={`w-full rounded-xl border p-5 text-left transition-all ${
-                activeIndex === idx
-                  ? 'border-[#0052FF] bg-white shadow-lg shadow-blue-500/10 ring-1 ring-[#0052FF]'
-                  : 'border-slate-200 bg-white hover:border-blue-200'
-              }`}
+              className={`w-full rounded-xl border p-5 text-left transition-all ${activeIndex === idx
+                ? 'border-[#0052FF] bg-white shadow-lg shadow-blue-500/10 ring-1 ring-[#0052FF]'
+                : 'border-slate-200 bg-white hover:border-blue-200'
+                }`}
             >
               <div className="mb-2 flex items-start justify-between">
                 <Badge color={activeIndex === idx ? 'blue' : 'slate'}>{candidate.focus}</Badge>

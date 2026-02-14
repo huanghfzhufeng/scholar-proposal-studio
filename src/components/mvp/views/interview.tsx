@@ -1,144 +1,104 @@
-'use client';
-
-import { motion } from 'framer-motion';
-import { ArrowLeft, ArrowRight, Bot, MessageSquareDashed, SkipForward, User } from 'lucide-react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { Bot, Send, User } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { Button } from '@/components/mvp/ui';
-import type { InterviewMessage } from '@/components/mvp/types';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import { Button, Textarea } from '@/components/mvp/ui';
 
-type InterviewViewProps = {
-  messages: InterviewMessage[];
+interface InterviewViewProps {
+  messages: Array<{ role: 'ai' | 'user'; text: string }>;
   sufficiencyScore: number;
+  onSendMessage: (text: string) => void;
   onBackDashboard: () => void;
-  onSendMessage: (input: string) => void;
-  onSkipQuestion: () => void;
-  onSwitchTopic: () => void;
-  onJumpToOutline: () => void;
-};
+  onSkipQuestion?: () => void;
+  onSwitchTopic?: () => void;
+  onJumpToOutline?: () => void;
+}
 
 export const InterviewView = ({
   messages,
-  sufficiencyScore,
-  onBackDashboard,
   onSendMessage,
   onSkipQuestion,
-  onSwitchTopic,
-  onJumpToOutline
+  onSwitchTopic
 }: InterviewViewProps) => {
   const [input, setInput] = useState('');
-  const scrollRef = useRef<HTMLDivElement | null>(null);
-
-  const handleSend = () => {
-    if (!input.trim()) {
-      return;
-    }
-
-    onSendMessage(input.trim());
-    setInput('');
-  };
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  const handleSubmit = () => {
+    if (!input.trim()) return;
+    onSendMessage(input);
+    setInput('');
+  };
+
   return (
-    <div className="flex h-[calc(100vh-80px)] w-full animate-in fade-in">
-      <div className="hidden w-80 flex-col border-r border-slate-200 bg-white p-6 lg:flex">
-        <div className="mb-8">
-          <Button variant="ghost" size="sm" icon={ArrowLeft} className="-ml-4 mb-4" onClick={onBackDashboard}>
-            返回工作台
-          </Button>
-          <h3 className="mb-2 text-xl font-bold">项目访谈</h3>
-          <p className="text-sm text-slate-500">访谈智能体会持续追问，直到信息充分。</p>
-        </div>
-
-        <div className="space-y-6">
-          <div className="rounded-xl border border-blue-100 bg-blue-50 p-4">
-            <div className="font-mono-custom mb-1 text-xs uppercase text-blue-600">Current Focus</div>
-            <div className="font-bold text-slate-900">信息充分度评估</div>
-          </div>
-
-          <div className="space-y-2">
-            <div className="flex justify-between text-xs font-medium text-slate-500">
-              <span>信息收集进度</span>
-              <span>{sufficiencyScore}%</span>
-            </div>
-            <div className="h-2 overflow-hidden rounded-full bg-slate-100">
-              <div className="h-full bg-[#0052FF] transition-all duration-300" style={{ width: `${sufficiencyScore}%` }} />
-            </div>
-          </div>
-
-          {sufficiencyScore >= 80 ? (
-            <div className="rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
-              信息已较充分，建议结束访谈并进入大纲生成。
-            </div>
-          ) : null}
-
-          <div className="space-y-2">
-            <Button size="sm" variant="outline" className="w-full" icon={SkipForward} onClick={onSkipQuestion}>
-              跳过当前问题
-            </Button>
-            <Button size="sm" variant="outline" className="w-full" icon={MessageSquareDashed} onClick={onSwitchTopic}>
-              切换话题
-            </Button>
-          </div>
-        </div>
-
-        <div className="mt-auto">
-          <Button className="w-full" variant="secondary" onClick={onJumpToOutline}>
-            结束访谈，生成大纲
-          </Button>
-        </div>
-      </div>
-
-      <div className="relative flex flex-1 flex-col bg-[#FAFAFA]">
-        <div className="flex-1 space-y-8 overflow-y-auto p-6 lg:p-12">
+    <div className="flex h-full flex-col bg-slate-50">
+      <div className="flex-1 overflow-y-auto p-4 md:p-8">
+        <div className="mx-auto max-w-3xl space-y-6">
           {messages.map((msg, idx) => (
             <motion.div
-              key={`${msg.role}-${idx}`}
+              key={idx}
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               className={`flex gap-4 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}
             >
               <div
-                className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full shadow-sm ${
-                  msg.role === 'ai'
-                    ? 'bg-gradient-primary text-white'
-                    : 'border border-slate-200 bg-white text-slate-600'
-                }`}
+                className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${msg.role === 'ai' ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-600'
+                  }`}
               >
                 {msg.role === 'ai' ? <Bot size={20} /> : <User size={20} />}
               </div>
               <div
-                className={`max-w-2xl rounded-2xl p-6 text-base leading-relaxed shadow-sm ${
-                  msg.role === 'ai'
+                className={`max-w-2xl rounded-2xl p-6 text-base leading-relaxed shadow-sm ${msg.role === 'ai'
                     ? 'rounded-tl-none border border-slate-100 bg-white text-slate-800'
                     : 'rounded-tr-none bg-[#0052FF] text-white shadow-blue-500/20'
-                }`}
+                  }`}
               >
-                {msg.text}
+                <div className="prose prose-sm max-w-none dark:prose-invert">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    {msg.text}
+                  </ReactMarkdown>
+                </div>
               </div>
             </motion.div>
           ))}
           <div ref={scrollRef} />
         </div>
+      </div>
 
-        <div className="border-t border-slate-200 bg-white p-6">
-          <div className="relative mx-auto max-w-4xl">
-            <textarea
+      <div className="border-t border-slate-200 bg-white p-4">
+        <div className="mx-auto max-w-3xl">
+          <div className="relative rounded-xl border border-slate-200 shadow-sm transition-all focus-within:border-indigo-500 focus-within:ring-1 focus-within:ring-indigo-500">
+            <Textarea
               value={input}
-              onChange={(event) => setInput(event.target.value)}
-              placeholder="输入您的回答..."
-              className="h-24 w-full resize-none rounded-xl border border-slate-200 bg-slate-50 p-4 pr-32 shadow-inner focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' && !event.shiftKey) {
-                  event.preventDefault();
-                  handleSend();
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSubmit();
                 }
               }}
+              placeholder="输入你的回答，Shift+Enter 换行..."
+              className="min-h-[60px] resize-none border-0 bg-transparent px-4 py-3 placeholder:text-slate-400 focus-visible:ring-0"
             />
-            <div className="absolute bottom-4 right-4 flex gap-2">
-              <Button size="sm" onClick={handleSend} icon={ArrowRight}>
+            <div className="flex items-center justify-between border-t border-slate-100 bg-slate-50 px-3 py-2">
+              <div className="flex gap-2">
+                {onSkipQuestion && (
+                  <Button variant="ghost" size="sm" onClick={onSkipQuestion} className="h-8 text-xs text-slate-500 hover:text-slate-700">
+                    跳过此题
+                  </Button>
+                )}
+                {onSwitchTopic && (
+                  <Button variant="ghost" size="sm" onClick={onSwitchTopic} className="h-8 text-xs text-slate-500 hover:text-slate-700">
+                    切换话题
+                  </Button>
+                )}
+              </div>
+              <Button size="sm" onClick={handleSubmit} disabled={!input.trim()} className="h-8 rounded-lg bg-indigo-600 px-4 hover:bg-indigo-700">
+                <Send size={14} className="mr-1.5" />
                 发送
               </Button>
             </div>

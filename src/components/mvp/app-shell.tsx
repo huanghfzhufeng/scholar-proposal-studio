@@ -232,11 +232,11 @@ export const MvpAppShell = () => {
       prev.map((item) =>
         item.id === projectId
           ? {
-              ...item,
-              stage,
-              progress,
-              lastEdit: '刚刚'
-            }
+            ...item,
+            stage,
+            progress,
+            lastEdit: '刚刚'
+          }
           : item
       )
     );
@@ -510,9 +510,10 @@ export const MvpAppShell = () => {
 
     const updatedMessages = [...messages, { role: 'user' as const, text: input }];
     setMessages(updatedMessages);
+    addAiMessage(''); // Add empty AI message placeholder
 
     try {
-      const output = await api.interviewNext({
+      const response = await api.interviewNextStream({
         projectId: activeProject.id,
         projectTitle: activeProject.title,
         history: updatedMessages.map((item) => ({
@@ -522,16 +523,74 @@ export const MvpAppShell = () => {
         userAnswer: input
       });
 
-      addAiMessage(output.nextQuestion);
-      setSufficiencyScore(Math.round(output.sufficiencyScore * 100));
-      setInterviewSummary(output.summary);
-      await syncProjectStage(activeProject.id, 'interview', clamp(Math.round(output.sufficiencyScore * 100), 5, 55));
+      if (!response.body) {
+        throw new Error('No response body');
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let currentText = '';
+      let currentScore = sufficiencyScore;
+      let currentSummary = interviewSummary;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+          break;
+        }
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (line.startsWith('event: delta')) {
+            // preparing for data
+          } else if (line.startsWith('data: ')) {
+            const data = line.slice(6);
+            try {
+              const payload = JSON.parse(data);
+              if (payload.text) {
+                currentText += payload.text;
+                setMessages((prev) => {
+                  const last = prev[prev.length - 1];
+                  if (last.role === 'ai') {
+                    return [...prev.slice(0, -1), { ...last, text: currentText }];
+                  }
+                  return prev;
+                });
+              } else if (payload.sufficiencyScore !== undefined) {
+                currentScore = Math.round(payload.sufficiencyScore * 100);
+                currentSummary = payload.summary;
+                setSufficiencyScore(currentScore);
+                setInterviewSummary(currentSummary);
+                await syncProjectStage(activeProject.id, 'interview', clamp(currentScore, 5, 55));
+
+                if (currentScore >= 80) {
+                  // Auto redirect logic
+                  setTimeout(() => {
+                    handleJumpToOutline();
+                  }, 2000);
+                }
+              }
+            } catch {
+              // ignore
+            }
+          }
+        }
+      }
+
+      // Save final state if needed (API already handles persistence)
     } catch {
       const aiQuestion = interviewQuestionBank[Math.floor(Math.random() * interviewQuestionBank.length)];
-      addAiMessage(aiQuestion);
-      const nextScore = clamp(sufficiencyScore + 8 + Math.floor(Math.random() * 10), 0, 96);
-      setSufficiencyScore(nextScore);
-      await syncProjectStage(activeProject.id, 'interview', clamp(nextScore, 5, 55));
+      setMessages((prev) => {
+        const last = prev[prev.length - 1];
+        if (last.role === 'ai') {
+          return [...prev.slice(0, -1), { ...last, text: aiQuestion }];
+        }
+        return [...prev, { role: 'ai', text: aiQuestion }];
+      });
     }
   };
 
@@ -581,6 +640,7 @@ export const MvpAppShell = () => {
       return;
     }
 
+    setIsGenerating(true);
     try {
       const response = await api.generateOutlines({
         projectId: activeProject.id,
@@ -594,6 +654,8 @@ export const MvpAppShell = () => {
     } catch {
       setOutlineCandidates(generateOutlineCandidates());
       setActiveOutlineIndex(0);
+    } finally {
+      setIsGenerating(false);
     }
   };
 
@@ -777,64 +839,6 @@ export const MvpAppShell = () => {
     setGenerationSteps((prev) => prev.map((item, idx) => (idx === index ? { ...item, status: 'done' } : item)));
   };
 
-  const runGenerationStream = (jobId: string) =>
-    new Promise<void>((resolve) => {
-      if (typeof window === 'undefined' || typeof window.EventSource === 'undefined') {
-        resolve();
-        return;
-      }
-
-      let finished = false;
-      const source = new EventSource(`/api/jobs/${jobId}/stream`);
-      const timer = window.setTimeout(() => {
-        if (finished) {
-          return;
-        }
-
-        finished = true;
-        source.close();
-        resolve();
-      }, 6000);
-
-      const complete = () => {
-        if (finished) {
-          return;
-        }
-
-        finished = true;
-        window.clearTimeout(timer);
-        source.close();
-        resolve();
-      };
-
-      const markStep = (index: number, status: GenerationStep['status']) => {
-        setGenerationSteps((prev) => prev.map((item, idx) => (idx === index ? { ...item, status } : item)));
-      };
-
-      source.addEventListener('queued', () => {
-        markStep(0, 'running');
-      });
-
-      source.addEventListener('running', () => {
-        markStep(0, 'done');
-        markStep(1, 'running');
-      });
-
-      source.addEventListener('step_done', () => {
-        markStep(1, 'done');
-        markStep(2, 'running');
-      });
-
-      source.addEventListener('completed', () => {
-        markStep(2, 'done');
-        complete();
-      });
-
-      source.onerror = () => {
-        complete();
-      };
-    });
-
   const autoFillMissingSections = async (missingSections: string[]) => {
     if (!activeProject) {
       return;
@@ -879,82 +883,92 @@ export const MvpAppShell = () => {
     setHasGeneratedDraft(false);
     setExportError('');
     setIsGenerating(true);
+    setDraftContent(''); // Clear previous content
     setGenerationSteps(defaultGenerationSteps());
-    const streamPromise = runGenerationStream(`draft-${activeProject.id}-${Date.now()}`);
 
-    let retryCount = 0;
-    let generated = false;
+    // Mark first two steps as done immediately
+    setGenerationSteps((prev) => prev.map((item, idx) => (idx <= 1 ? { ...item, status: 'done' } : item)));
 
-    while (!generated && retryCount <= 2) {
-      setGenerationSteps((prev) => prev.map((item, idx) => (idx === 2 ? { ...item, status: 'running' } : item)));
+    // Mark writing step as running
+    setGenerationSteps((prev) => prev.map((item, idx) => (idx === 2 ? { ...item, status: 'running' } : item)));
 
-      const response = await api.generateDraft({
+    try {
+      const response = await api.generateDraftStream({
         projectId: activeProject.id,
         title: activeProject.title,
         outlineText: JSON.stringify(outlineCandidates[activeOutlineIndex] || {}),
-        sourceText: JSON.stringify(sources.filter((item) => item.selected)),
-        retryCount
+        sourceText: JSON.stringify(sources.filter((item) => item.selected))
       });
 
-      if (response.ok) {
-        const payload = (await response.json()) as {
-          data: {
-            content: string;
-          };
-        };
-
-        setDraftContent(payload.data.content);
-        setGenerationSteps((prev) => prev.map((item, idx) => (idx === 2 ? { ...item, status: 'done' } : item)));
-        generated = true;
-        break;
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || '生成请求失败');
       }
 
-      const errorPayload = (await response.json()) as {
-        error?: string;
-        data?: {
-          missingSections?: string[];
-          unverifiedSourceIds?: string[];
-        };
-      };
+      const body = response.body;
+      if (!body) {
+        throw new Error('No response body');
+      }
 
-      if (response.status === 422 && errorPayload.error === 'INSUFFICIENT_CITATIONS') {
-        const missingSections = errorPayload.data?.missingSections || [];
-        if (retryCount >= 2) {
-          setExportError(`生成失败：引用不足（${missingSections.join('、')}），已重试 2 次。`);
+      const reader = body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let currentText = '';
+      let generated = false;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
           break;
         }
 
-        await autoFillMissingSections(missingSections);
-        retryCount += 1;
-        continue;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6).trim();
+            if (!data) continue;
+
+            try {
+              const payload = JSON.parse(data);
+
+              if (payload.error) {
+                // Handle error (e.g., INSUFFICIENT_CITATIONS)
+                setExportError(`生成失败：${payload.error}`);
+                setIsGenerating(false);
+                return;
+              }
+
+              if (payload.text) {
+                currentText += payload.text;
+                setDraftContent(currentText);
+              } else if (payload.content) {
+                // Done event with validation result
+                generated = true;
+                if (payload.hasUnverified || (payload.unverifiedSourceIds && payload.unverifiedSourceIds.length > 0)) {
+                  setExportError(`生成完成，但存在未验证引用：${payload.unverifiedSourceIds?.join(', ')}`);
+                }
+              }
+            } catch {
+              // ignore malformed
+            }
+          }
+        }
       }
 
-      if (response.status === 422 && errorPayload.error === 'INSUFFICIENT_CONTENT_CITATIONS') {
-        const missingSections = errorPayload.data?.missingSections || [];
-        setExportError(`生成失败：正文引用不足（${missingSections.join('、')}），请补充来源后重试。`);
-        break;
-      }
+      setGenerationSteps((prev) => prev.map((item, idx) => (idx === 2 ? { ...item, status: 'done' } : item)));
+      await runStep(3); // Citation check (visual)
+      await runStep(4); // Finish
 
-      if (response.status === 422 && errorPayload.error === 'UNVERIFIED_CITATIONS') {
-        const unverifiedSourceIds = errorPayload.data?.unverifiedSourceIds || [];
-        setExportError(`生成失败：检测到未核验引用（${unverifiedSourceIds.join('、')}）。`);
-        break;
-      }
-
-      setExportError('生成失败，请稍后重试。');
-      break;
-    }
-
-    await streamPromise;
-
-    await runStep(3);
-    await runStep(4);
-
-    setIsGenerating(false);
-
-    if (generated) {
+      setIsGenerating(false);
       setHasGeneratedDraft(true);
       await syncProjectStage(activeProject.id, 'editor', 88);
+
+    } catch (e) {
+      setExportError('生成失败，请稍后重试。');
+      setIsGenerating(false);
     }
   };
 
@@ -1049,6 +1063,7 @@ export const MvpAppShell = () => {
             candidates={outlineCandidates}
             activeIndex={activeOutlineIndex}
             versions={outlineVersions}
+            isGenerating={isGenerating}
             onBackDashboard={() => setViewWithPersist('dashboard')}
             onSetActiveIndex={setActiveOutlineIndex}
             onRegenerate={handleRegenerateOutline}
@@ -1079,6 +1094,7 @@ export const MvpAppShell = () => {
             steps={generationSteps}
             isGenerating={isGenerating}
             hasGeneratedDraft={hasGeneratedDraft}
+            draftContent={draftContent}
             onBackSources={() => setViewWithPersist('sources')}
             onStartGeneration={handleStartGeneration}
             onGoEditor={handleGoEditor}

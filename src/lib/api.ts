@@ -102,6 +102,18 @@ export const api = {
       body: JSON.stringify(payload)
     }),
 
+  interviewNextStream: (payload: {
+    projectId: string;
+    projectTitle: string;
+    history: Array<{ role: 'system' | 'assistant' | 'user'; content: string }>;
+    userAnswer?: string;
+  }) =>
+    fetch('/api/interview/next', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }),
+
   interviewFinish: (payload: {
     projectId: string;
     summary: string;
@@ -190,5 +202,17 @@ export const api = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
+    }),
+
+  generateDraftStream: (payload: {
+    projectId: string;
+    title: string;
+    outlineText: string;
+    sourceText: string;
+  }) =>
+    fetch('/api/drafts/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...payload, stream: true })
     })
 };
