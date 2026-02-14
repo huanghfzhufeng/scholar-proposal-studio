@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { exportPdfBuffer } from '@/services/export/pdf-exporter';
 
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => ({}))) as { projectTitle?: string; content?: string };
@@ -9,13 +10,14 @@ export async function POST(request: Request) {
   }
 
   const fileName = `${title.replace(/[\\/:*?"<>|]/g, ' ').trim()}.pdf`;
-  const payload = body.content || '';
+  const payload = exportPdfBuffer(title, body.content || '');
 
   return new NextResponse(payload, {
     status: 200,
     headers: {
       'Content-Type': 'application/pdf',
-      'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`
+      'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`,
+      'Content-Length': payload.byteLength.toString()
     }
   });
 }
