@@ -18,11 +18,11 @@ export async function POST(request: Request) {
   });
 
   if (body.projectId) {
-    const nextMessages = [
+    const nextMessages: Array<{ role: 'ai' | 'user'; text: string }> = [
       ...(body.history || [])
         .filter((item) => item.role === 'assistant' || item.role === 'user')
         .map((item) => ({
-          role: item.role === 'assistant' ? 'ai' : 'user',
+          role: item.role === 'assistant' ? ('ai' as const) : ('user' as const),
           text: item.content
         })),
       { role: 'ai' as const, text: output.nextQuestion }

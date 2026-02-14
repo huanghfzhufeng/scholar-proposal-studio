@@ -3,11 +3,11 @@ import { projectStore } from '@/lib/server/project-store';
 import type { WorkflowStatePatch } from '@/shared/workflow-state';
 
 type Params = {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 };
 
 export async function GET(_request: Request, context: Params) {
-  const { id } = context.params;
+  const { id } = await context.params;
 
   const state = await projectStore.getProjectState(id);
   if (!state) {
@@ -28,7 +28,7 @@ export async function GET(_request: Request, context: Params) {
 }
 
 export async function PATCH(request: Request, context: Params) {
-  const { id } = context.params;
+  const { id } = await context.params;
 
   const body = (await request.json().catch(() => ({}))) as {
     workflowState?: WorkflowStatePatch;

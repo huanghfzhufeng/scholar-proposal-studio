@@ -2,11 +2,11 @@ import { NextResponse } from 'next/server';
 import { projectStore } from '@/lib/server/project-store';
 
 type Params = {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 };
 
 export async function POST(_request: Request, context: Params) {
-  const { id } = context.params;
+  const { id } = await context.params;
   const updated = await projectStore.updateProject(id, {
     deletedAt: null
   });

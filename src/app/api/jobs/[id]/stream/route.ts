@@ -1,9 +1,9 @@
 type Params = {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 };
 
 export async function GET(_request: Request, context: Params) {
-  const { id } = context.params;
+  const { id } = await context.params;
   const encoder = new TextEncoder();
   const events = [
     { event: 'queued', data: { id, status: 'queued', message: '任务已入队' } },

@@ -2,11 +2,11 @@ import { NextResponse } from 'next/server';
 import { projectStore } from '@/lib/server/project-store';
 
 type Params = {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 };
 
 export async function DELETE(_request: Request, context: Params) {
-  const { id } = context.params;
+  const { id } = await context.params;
   const updated = await projectStore.updateProject(id, {
     deletedAt: new Date().toISOString()
   });
@@ -19,7 +19,7 @@ export async function DELETE(_request: Request, context: Params) {
 }
 
 export async function PATCH(request: Request, context: Params) {
-  const { id } = context.params;
+  const { id } = await context.params;
   const body = (await request.json().catch(() => ({}))) as {
     title?: string;
     status?: string;

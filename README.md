@@ -34,6 +34,8 @@ cat > .env <<'EOF'
 POSTGRES_USER=postgres
 POSTGRES_PASSWORD=postgres
 POSTGRES_DB=scholar_proposal_studio
+POSTGRES_PORT=5432
+APP_PORT=3000
 USE_REAL_LLM=false
 MINIMAX_API_KEY=
 USE_REAL_SEARCH=false
@@ -49,8 +51,10 @@ docker compose up --build -d
 
 3. 访问系统
 
-- 应用：[http://localhost:3000](http://localhost:3000)
-- 数据库：`localhost:5432`
+- 应用：`http://localhost:<APP_PORT>`（默认 `3000`）
+- 数据库：`localhost:<POSTGRES_PORT>`（默认 `5432`）
+
+如果本机 `3000` 端口已被占用，把 `.env` 里的 `APP_PORT` 改成例如 `3001` 后再启动。
 
 4. 停止服务
 

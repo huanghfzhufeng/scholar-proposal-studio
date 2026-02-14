@@ -2,6 +2,7 @@ import type { DraftOutput } from '@/agents/draft';
 import type { InterviewOutput } from '@/agents/interview';
 import type { OutlineOutput } from '@/agents/outline';
 import type { RetrievalItem } from '@/agents/retrieval';
+import { Prisma } from '@prisma/client';
 import {
   addManualRetrievalItem,
   getRetrievalItems,
@@ -120,6 +121,28 @@ const mergeWorkflowPatch = (current: unknown, patch: WorkflowStatePatch): Workfl
     ...existing,
     ...sanitized
   };
+};
+
+const toInputJson = (value: unknown): Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput => {
+  if (value === null || value === undefined) {
+    return Prisma.JsonNull;
+  }
+
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    return value as Prisma.InputJsonArray;
+  }
+
+  if (isPlainObject(value)) {
+    return value as Prisma.InputJsonObject;
+  }
+
+  return {
+    value: String(value)
+  } as Prisma.InputJsonObject;
 };
 
 const withFallback = async <T>(prismaTask: () => Promise<T>, memoryTask: () => Promise<T> | T): Promise<T> => {
@@ -424,7 +447,7 @@ export const projectStore = {
         await prisma.project.update({
           where: { id: projectId },
           data: {
-            lockedOutline: isPlainObject(outline) || Array.isArray(outline) ? outline : { value: outline }
+            lockedOutline: toInputJson(outline)
           }
         });
         return true;
