@@ -19,6 +19,12 @@ npx prisma migrate dev
 npm run dev
 ```
 
+## 测试
+
+```bash
+npm run test
+```
+
 ## 环境变量
 
 复制 `.env.example` 到 `.env.local` 并按需填写。
