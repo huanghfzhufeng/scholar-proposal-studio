@@ -1,5 +1,5 @@
-import { MvpAppShell } from '@/components/mvp/app-shell';
+import { PublicLanding } from '@/components/mvp/views/public-landing';
 
 export default function HomePage() {
-  return <MvpAppShell />;
+  return <PublicLanding />;
 }

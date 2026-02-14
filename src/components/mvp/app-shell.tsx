@@ -2,6 +2,7 @@
 
 import { AnimatePresence, motion } from 'framer-motion';
 import { FileText, History, LogOut, Search, User, Workflow } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   createInitialDraft,
@@ -191,7 +192,7 @@ const normalizeOutlineVersions = (versions: WorkflowStatePatch['outlineVersions'
 };
 
 export const MvpAppShell = () => {
-  const [view, setView] = useState<AppView>('landing');
+  const [view, setView] = useState<AppView>('dashboard');
   const [projects, setProjects] = useState<ProjectItem[]>([]);
   const [archivedProjects, setArchivedProjects] = useState<ArchivedProject[]>([]);
   const [activeProjectId, setActiveProjectId] = useState<string>('');
@@ -213,6 +214,7 @@ export const MvpAppShell = () => {
   const [exportError, setExportError] = useState('');
   const [isRestoringState, setIsRestoringState] = useState(true);
   const lastSavedSnapshotRef = useRef<string>('');
+  const router = useRouter();
 
   const activeProject = useMemo(() => projects.find((item) => item.id === activeProjectId), [projects, activeProjectId]);
 
@@ -1152,7 +1154,10 @@ export const MvpAppShell = () => {
               size="sm"
               className="!px-2 text-slate-400"
               icon={LogOut}
-              onClick={() => setViewWithPersist('landing')}
+              onClick={() => {
+                persistUiState(view === 'landing' ? 'dashboard' : view, activeProjectId);
+                router.push('/');
+              }}
             />
           </div>
         </header>
