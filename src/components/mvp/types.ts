@@ -11,7 +11,7 @@ export type AppView =
 export type ProjectStage = 'interview' | 'outline' | 'sources' | 'generation' | 'editor';
 
 export type ProjectItem = {
-  id: number;
+  id: string;
   title: string;
   stage: ProjectStage;
   progress: number;

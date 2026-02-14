@@ -7,8 +7,8 @@ import type { ProjectItem } from '@/components/mvp/types';
 type DashboardViewProps = {
   projects: ProjectItem[];
   onNewProject: () => void;
-  onOpenProject: (projectId: number) => void;
-  onArchiveProject: (projectId: number) => void;
+  onOpenProject: (projectId: string) => void;
+  onArchiveProject: (projectId: string) => void;
   onOpenReservoir: () => void;
 };
 

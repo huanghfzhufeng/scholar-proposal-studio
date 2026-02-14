@@ -8,21 +8,21 @@ import type {
 
 export const initialProjects: ProjectItem[] = [
   {
-    id: 1,
+    id: 'local-1',
     title: '基于深度学习的蛋白质结构预测研究',
     stage: 'editor',
     progress: 88,
     lastEdit: '2小时前'
   },
   {
-    id: 2,
+    id: 'local-2',
     title: '新型纳米材料在光催化中的应用机制',
     stage: 'outline',
     progress: 42,
     lastEdit: '1天前'
   },
   {
-    id: 3,
+    id: 'local-3',
     title: '城市复杂交通流的多模态感知建模',
     stage: 'interview',
     progress: 16,

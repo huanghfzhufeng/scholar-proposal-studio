@@ -2,13 +2,11 @@
 
 import { AnimatePresence, motion } from 'framer-motion';
 import { FileText, History, LogOut, Search, User, Workflow } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
-  buildMockSources,
   createInitialDraft,
   generateOutlineCandidates,
   initialInterviewMessages,
-  initialProjects,
   interviewQuestionBank
 } from '@/components/mvp/data';
 import { Button } from '@/components/mvp/ui';
@@ -31,6 +29,10 @@ import type {
   SourceItem
 } from '@/components/mvp/types';
 import { exportAsDocx, exportAsPdf } from '@/lib/export';
+import { api, type ApiProject } from '@/lib/api';
+
+const UI_STATE_KEY = 'sps-ui-state-v1';
+const DRAFT_PREFIX = 'sps-draft-';
 
 const stageToView: Record<ProjectStage, AppView> = {
   interview: 'interview',
@@ -38,6 +40,41 @@ const stageToView: Record<ProjectStage, AppView> = {
   sources: 'sources',
   generation: 'generation',
   editor: 'editor'
+};
+
+const statusToStage = (status: string): ProjectStage => {
+  switch (status) {
+    case 'INTERVIEW':
+      return 'interview';
+    case 'OUTLINE_CANDIDATES':
+    case 'OUTLINE_LOCKED':
+      return 'outline';
+    case 'SOURCES_READY':
+      return 'sources';
+    case 'DRAFT_READY':
+      return 'generation';
+    case 'EXPORTABLE':
+      return 'editor';
+    default:
+      return 'interview';
+  }
+};
+
+const stageToStatus = (stage: ProjectStage) => {
+  switch (stage) {
+    case 'interview':
+      return 'INTERVIEW';
+    case 'outline':
+      return 'OUTLINE_CANDIDATES';
+    case 'sources':
+      return 'SOURCES_READY';
+    case 'generation':
+      return 'DRAFT_READY';
+    case 'editor':
+      return 'EXPORTABLE';
+    default:
+      return 'INTERVIEW';
+  }
 };
 
 const nowLabel = () => new Date().toLocaleString('zh-CN', { hour12: false });
@@ -50,6 +87,37 @@ const defaultGenerationSteps = (): GenerationStep[] => [
   { key: 'finish', title: '输出可编辑初稿', status: 'idle' }
 ];
 
+const mapApiProject = (item: ApiProject): ProjectItem => ({
+  id: item.id,
+  title: item.title,
+  stage: statusToStage(item.status),
+  progress: statusToStage(item.status) === 'editor' ? 92 : statusToStage(item.status) === 'generation' ? 78 : 35,
+  lastEdit: '刚刚'
+});
+
+const convertOutlineCandidates = (
+  candidates: Array<{ label: string; focus: string; sections: Array<{ title: string; children: string[] }> }>
+): OutlineCandidate[] => {
+  const now = Date.now();
+  return candidates.map((candidate, idx) => ({
+    id: `candidate-${now}-${idx}`,
+    title: candidate.label,
+    focus: candidate.focus,
+    fitScore: 88 + ((idx + 3) % 9),
+    content: candidate.sections.map((section, sectionIdx) => ({
+      id: sectionIdx + 1,
+      title: section.title,
+      subs: [...section.children]
+    }))
+  }));
+};
+
+const ensureSourceShape = (items: SourceItem[]) =>
+  items.map((item, idx) => ({
+    ...item,
+    id: item.id || `source-${Date.now()}-${idx}`
+  }));
+
 const cloneOutline = (candidate: OutlineCandidate): OutlineCandidate => ({
   ...candidate,
   content: candidate.content.map((section) => ({ ...section, subs: [...section.subs] }))
@@ -59,62 +127,159 @@ const clamp = (value: number, min: number, max: number) => Math.min(max, Math.ma
 
 export const MvpAppShell = () => {
   const [view, setView] = useState<AppView>('landing');
-  const [projects, setProjects] = useState<ProjectItem[]>(initialProjects);
+  const [projects, setProjects] = useState<ProjectItem[]>([]);
   const [archivedProjects, setArchivedProjects] = useState<ArchivedProject[]>([]);
-  const [activeProjectId, setActiveProjectId] = useState<number>(initialProjects[0]?.id ?? Date.now());
+  const [activeProjectId, setActiveProjectId] = useState<string>('');
 
   const [messages, setMessages] = useState(initialInterviewMessages);
   const [sufficiencyScore, setSufficiencyScore] = useState(16);
+  const [interviewSummary, setInterviewSummary] = useState('');
 
   const [outlineCandidates, setOutlineCandidates] = useState<OutlineCandidate[]>(generateOutlineCandidates());
   const [activeOutlineIndex, setActiveOutlineIndex] = useState(0);
   const [outlineVersions, setOutlineVersions] = useState<OutlineVersion[]>([]);
 
-  const [sources, setSources] = useState<SourceItem[]>(buildMockSources(initialProjects[0]?.title ?? '未命名课题'));
+  const [sources, setSources] = useState<SourceItem[]>([]);
   const [generationSteps, setGenerationSteps] = useState<GenerationStep[]>(defaultGenerationSteps());
   const [isGenerating, setIsGenerating] = useState(false);
   const [hasGeneratedDraft, setHasGeneratedDraft] = useState(false);
 
-  const [draftContent, setDraftContent] = useState(createInitialDraft(initialProjects[0]?.title ?? '未命名课题'));
+  const [draftContent, setDraftContent] = useState('');
   const [exportError, setExportError] = useState('');
 
-  const activeProject = useMemo(() => projects.find((item) => item.id === activeProjectId) ?? projects[0], [projects, activeProjectId]);
+  const activeProject = useMemo(() => projects.find((item) => item.id === activeProjectId), [projects, activeProjectId]);
 
-  const updateProject = (projectId: number, patch: Partial<ProjectItem>) => {
-    setProjects((prev) =>
-      prev.map((item) => {
-        if (item.id !== projectId) {
-          return item;
-        }
-
-        return {
-          ...item,
-          ...patch,
-          lastEdit: '刚刚'
-        };
-      })
-    );
+  const persistUiState = (nextView: AppView, nextProjectId: string) => {
+    localStorage.setItem(UI_STATE_KEY, JSON.stringify({ view: nextView, activeProjectId: nextProjectId }));
   };
 
-  const resetFlowForProject = (projectTitle: string) => {
+  const setViewWithPersist = (nextView: AppView) => {
+    setView(nextView);
+    persistUiState(nextView, activeProjectId);
+  };
+
+  const syncProjectStage = async (projectId: string, stage: ProjectStage, progress: number) => {
+    setProjects((prev) =>
+      prev.map((item) =>
+        item.id === projectId
+          ? {
+              ...item,
+              stage,
+              progress,
+              lastEdit: '刚刚'
+            }
+          : item
+      )
+    );
+
+    try {
+      await api.updateProject(projectId, { status: stageToStatus(stage) });
+    } catch {
+      // Keep UI responsive even when mock API fails.
+    }
+  };
+
+  const resetFlowForProject = (projectTitle: string, projectId: string) => {
     setMessages(initialInterviewMessages);
     setSufficiencyScore(16);
+    setInterviewSummary('');
     setOutlineCandidates(generateOutlineCandidates());
     setActiveOutlineIndex(0);
     setOutlineVersions([]);
-    setSources(buildMockSources(projectTitle));
+    setSources([]);
     setGenerationSteps(defaultGenerationSteps());
     setIsGenerating(false);
     setHasGeneratedDraft(false);
-    setDraftContent(createInitialDraft(projectTitle));
+    const localDraft = localStorage.getItem(`${DRAFT_PREFIX}${projectId}`);
+    setDraftContent(localDraft || createInitialDraft(projectTitle));
     setExportError('');
   };
 
-  const handleStartFromLanding = () => {
-    setView('dashboard');
+  const loadProjectState = async (projectId: string) => {
+    try {
+      const state = await api.getProjectState(projectId);
+      const localDraft = localStorage.getItem(`${DRAFT_PREFIX}${projectId}`);
+
+      if (state.interview) {
+        setSufficiencyScore(Math.round(state.interview.sufficiencyScore * 100));
+        setInterviewSummary(state.interview.summary);
+      }
+
+      if (state.outlines?.candidates?.length) {
+        const converted = convertOutlineCandidates(state.outlines.candidates);
+        setOutlineCandidates(converted);
+        setActiveOutlineIndex(0);
+      }
+
+      if (state.sources?.length) {
+        setSources(ensureSourceShape(state.sources));
+      }
+
+      if (state.draft?.content) {
+        setDraftContent(localDraft || state.draft.content);
+        setHasGeneratedDraft(true);
+      } else {
+        setDraftContent(localDraft || createInitialDraft(state.project.title));
+      }
+    } catch {
+      if (activeProject) {
+        resetFlowForProject(activeProject.title, activeProject.id);
+      }
+    }
   };
 
-  const handleOpenProject = (projectId: number) => {
+  const bootstrap = async () => {
+    try {
+      const payload = await api.listProjects();
+      const active = payload.active.map(mapApiProject);
+      const archived = payload.archived.map((item) => ({ ...mapApiProject(item), deletedAt: item.deletedAt || nowLabel() }));
+
+      setProjects(active);
+      setArchivedProjects(archived);
+
+      const cached = localStorage.getItem(UI_STATE_KEY);
+      const parsed = cached ? (JSON.parse(cached) as { view?: AppView; activeProjectId?: string }) : {};
+
+      if (active.length === 0) {
+        const created = await api.createProject(`未命名课题-${Date.now()}`);
+        const project = mapApiProject(created);
+        setProjects([project]);
+        setActiveProjectId(project.id);
+        resetFlowForProject(project.title, project.id);
+        setView('interview');
+        persistUiState('interview', project.id);
+        return;
+      }
+
+      const preferredId = parsed.activeProjectId && active.some((item) => item.id === parsed.activeProjectId) ? parsed.activeProjectId : active[0].id;
+      const preferredView = parsed.view && parsed.view !== 'landing' ? parsed.view : 'dashboard';
+
+      setActiveProjectId(preferredId);
+      await loadProjectState(preferredId);
+      setView(preferredView);
+      persistUiState(preferredView, preferredId);
+    } catch {
+      // Fallback for first launch when API is unavailable.
+      setView('dashboard');
+    }
+  };
+
+  useEffect(() => {
+    void bootstrap();
+  }, []);
+
+  useEffect(() => {
+    if (!activeProjectId) {
+      return;
+    }
+    localStorage.setItem(`${DRAFT_PREFIX}${activeProjectId}`, draftContent);
+  }, [activeProjectId, draftContent]);
+
+  const handleStartFromLanding = () => {
+    setViewWithPersist('dashboard');
+  };
+
+  const handleOpenProject = async (projectId: string) => {
     const project = projects.find((item) => item.id === projectId);
 
     if (!project) {
@@ -122,47 +287,46 @@ export const MvpAppShell = () => {
     }
 
     setActiveProjectId(projectId);
-    resetFlowForProject(project.title);
-    setView(stageToView[project.stage]);
+    resetFlowForProject(project.title, project.id);
+    await loadProjectState(projectId);
+    const nextView = stageToView[project.stage];
+    setView(nextView);
+    persistUiState(nextView, projectId);
   };
 
-  const handleNewProject = () => {
-    const id = Date.now();
-    const newProject: ProjectItem = {
-      id,
-      title: `未命名课题 ${projects.length + 1}`,
-      stage: 'interview',
-      progress: 5,
-      lastEdit: '刚刚'
-    };
+  const handleNewProject = async () => {
+    const created = await api.createProject(`未命名课题-${projects.length + 1}`);
+    const project = mapApiProject(created);
 
-    setProjects((prev) => [newProject, ...prev]);
-    setActiveProjectId(id);
-    resetFlowForProject(newProject.title);
+    setProjects((prev) => [project, ...prev]);
+    setActiveProjectId(project.id);
+    resetFlowForProject(project.title, project.id);
     setView('interview');
+    persistUiState('interview', project.id);
   };
 
-  const handleArchiveProject = (projectId: number) => {
+  const handleArchiveProject = async (projectId: string) => {
     const target = projects.find((item) => item.id === projectId);
 
     if (!target) {
       return;
     }
 
+    await api.deleteProject(projectId);
     setArchivedProjects((prev) => [{ ...target, deletedAt: nowLabel() }, ...prev]);
     setProjects((prev) => prev.filter((item) => item.id !== projectId));
 
-    if (activeProjectId === projectId) {
-      const fallback = projects.find((item) => item.id !== projectId);
-      if (fallback) {
-        setActiveProjectId(fallback.id);
-      }
+    const fallback = projects.find((item) => item.id !== projectId);
+    if (fallback) {
+      setActiveProjectId(fallback.id);
+      persistUiState('dashboard', fallback.id);
     }
   };
 
-  const handleRestoreProject = (projectId: number) => {
-    const target = archivedProjects.find((item) => item.id === projectId);
+  const handleRestoreProject = async (projectId: string) => {
+    await api.restoreProject(projectId);
 
+    const target = archivedProjects.find((item) => item.id === projectId);
     if (!target) {
       return;
     }
@@ -171,25 +335,42 @@ export const MvpAppShell = () => {
     setProjects((prev) => [{ ...target, lastEdit: '刚刚' }, ...prev]);
     setActiveProjectId(projectId);
     setView('dashboard');
+    persistUiState('dashboard', projectId);
   };
 
   const addAiMessage = (text: string) => {
     setMessages((prev) => [...prev, { role: 'ai', text }]);
   };
 
-  const handleSendMessage = (input: string) => {
-    setMessages((prev) => [...prev, { role: 'user', text: input }]);
+  const handleSendMessage = async (input: string) => {
+    if (!activeProject) {
+      return;
+    }
 
-    const aiQuestion = interviewQuestionBank[Math.floor(Math.random() * interviewQuestionBank.length)];
-    const nextScore = clamp(sufficiencyScore + 8 + Math.floor(Math.random() * 10), 0, 96);
+    const updatedMessages = [...messages, { role: 'user' as const, text: input }];
+    setMessages(updatedMessages);
 
-    window.setTimeout(() => {
+    try {
+      const output = await api.interviewNext({
+        projectId: activeProject.id,
+        projectTitle: activeProject.title,
+        history: updatedMessages.map((item) => ({
+          role: item.role === 'ai' ? 'assistant' : 'user',
+          content: item.text
+        })),
+        userAnswer: input
+      });
+
+      addAiMessage(output.nextQuestion);
+      setSufficiencyScore(Math.round(output.sufficiencyScore * 100));
+      setInterviewSummary(output.summary);
+      await syncProjectStage(activeProject.id, 'interview', clamp(Math.round(output.sufficiencyScore * 100), 5, 55));
+    } catch {
+      const aiQuestion = interviewQuestionBank[Math.floor(Math.random() * interviewQuestionBank.length)];
       addAiMessage(aiQuestion);
+      const nextScore = clamp(sufficiencyScore + 8 + Math.floor(Math.random() * 10), 0, 96);
       setSufficiencyScore(nextScore);
-    }, 450);
-
-    if (activeProject) {
-      updateProject(activeProject.id, { stage: 'interview', progress: clamp(nextScore, 5, 55) });
+      await syncProjectStage(activeProject.id, 'interview', clamp(nextScore, 5, 55));
     }
   };
 
@@ -201,24 +382,46 @@ export const MvpAppShell = () => {
     addAiMessage('好的，我们切换到“研究基础”。请描述现有团队、平台或前期数据支撑。');
   };
 
-  const handleJumpToOutline = () => {
+  const handleJumpToOutline = async () => {
     if (!activeProject) {
       return;
     }
 
     const next = clamp(Math.max(sufficiencyScore, 60), 0, 100);
     setSufficiencyScore(next);
-    updateProject(activeProject.id, { stage: 'outline', progress: next });
-    setView('outline');
-  };
+    await syncProjectStage(activeProject.id, 'outline', next);
 
-  const handleRegenerateOutline = () => {
-    setOutlineCandidates(generateOutlineCandidates());
-    setActiveOutlineIndex(0);
+    if (!outlineCandidates.length) {
+      await handleRegenerateOutline();
+    }
+
+    setView('outline');
+    persistUiState('outline', activeProject.id);
   };
 
   const updateCandidate = (candidateIndex: number, updater: (candidate: OutlineCandidate) => OutlineCandidate) => {
     setOutlineCandidates((prev) => prev.map((item, idx) => (idx === candidateIndex ? updater(cloneOutline(item)) : item)));
+  };
+
+  const handleRegenerateOutline = async () => {
+    if (!activeProject) {
+      return;
+    }
+
+    try {
+      const response = await api.generateOutlines({
+        projectId: activeProject.id,
+        projectTitle: activeProject.title,
+        interviewSummary: interviewSummary || messages.map((item) => item.text).join('\n')
+      });
+
+      const converted = convertOutlineCandidates(response.candidates);
+      setOutlineCandidates(converted);
+      setActiveOutlineIndex(0);
+    } catch {
+      setOutlineCandidates(generateOutlineCandidates());
+      setActiveOutlineIndex(0);
+    }
   };
 
   const handleChangeSectionTitle = (candidateIndex: number, sectionIndex: number, value: string) => {
@@ -253,7 +456,7 @@ export const MvpAppShell = () => {
     });
   };
 
-  const handleConfirmOutline = () => {
+  const handleConfirmOutline = async () => {
     if (!activeProject) {
       return;
     }
@@ -271,44 +474,132 @@ export const MvpAppShell = () => {
     };
 
     setOutlineVersions((prev) => [nextVersion, ...prev]);
-    updateProject(activeProject.id, { stage: 'sources', progress: 62 });
-    setSources(buildMockSources(activeProject.title));
+
+    await api.lockOutline({
+      projectId: activeProject.id,
+      outlineId: selected.id,
+      outline: selected
+    });
+
+    await syncProjectStage(activeProject.id, 'sources', 62);
     setView('sources');
+    persistUiState('sources', activeProject.id);
+    await handleRefreshSearch();
   };
 
-  const handleRefreshSearch = () => {
+  const handleRefreshSearch = async () => {
     if (!activeProject) {
       return;
     }
 
-    setSources(
-      buildMockSources(activeProject.title).map((item, idx) => ({
-        ...item,
-        selected: idx < 3
-      }))
-    );
+    const keywords = outlineCandidates[activeOutlineIndex]?.content.map((section) => section.title) || ['立项依据', '研究内容', '研究基础'];
+    const response = await api.searchSources({
+      projectId: activeProject.id,
+      projectTitle: activeProject.title,
+      outlineKeywords: keywords
+    });
+
+    setSources(ensureSourceShape(response.items));
   };
 
-  const handleToggleSource = (sourceId: string) => {
-    setSources((prev) => prev.map((item) => (item.id === sourceId ? { ...item, selected: !item.selected } : item)));
-  };
-
-  const handleContinueGeneration = () => {
+  const handleToggleSource = async (sourceId: string) => {
     if (!activeProject) {
       return;
     }
 
-    updateProject(activeProject.id, { stage: 'generation', progress: 72 });
+    const current = sources.find((item) => item.id === sourceId);
+    if (!current) {
+      return;
+    }
+
+    const response = await api.selectSource({
+      projectId: activeProject.id,
+      sourceId,
+      selected: !current.selected
+    });
+
+    setSources(ensureSourceShape(response.items));
+  };
+
+  const handleAddManualSource = async (payload: {
+    title: string;
+    url: string;
+    source: string;
+    year: string;
+    abstract: string;
+    sectionKey: SourceItem['sectionKey'];
+  }) => {
+    if (!activeProject) {
+      return;
+    }
+
+    const item = await api.addSource({
+      projectId: activeProject.id,
+      title: payload.title,
+      url: payload.url,
+      source: payload.source,
+      year: payload.year,
+      abstract: payload.abstract,
+      sectionKey: payload.sectionKey,
+      score: 82
+    });
+
+    setSources((prev) => [item, ...prev]);
+  };
+
+  const handleContinueGeneration = async () => {
+    if (!activeProject) {
+      return;
+    }
+
+    await syncProjectStage(activeProject.id, 'generation', 72);
     setGenerationSteps(defaultGenerationSteps());
     setView('generation');
+    persistUiState('generation', activeProject.id);
   };
 
   const wait = (ms: number) => new Promise<void>((resolve) => window.setTimeout(resolve, ms));
 
   const runStep = async (index: number) => {
     setGenerationSteps((prev) => prev.map((item, idx) => (idx === index ? { ...item, status: 'running' } : item)));
-    await wait(700);
+    await wait(500);
     setGenerationSteps((prev) => prev.map((item, idx) => (idx === index ? { ...item, status: 'done' } : item)));
+  };
+
+  const autoFillMissingSections = async (missingSections: string[]) => {
+    if (!activeProject) {
+      return;
+    }
+
+    const response = await api.searchSources({
+      projectId: activeProject.id,
+      projectTitle: activeProject.title,
+      outlineKeywords: missingSections
+    });
+
+    const items = ensureSourceShape(response.items);
+    const nextItems = [...items];
+
+    for (const section of missingSections) {
+      const sectionItems = nextItems.filter((item) => item.sectionKey === section);
+      const selectedCount = sectionItems.filter((item) => item.selected).length;
+      const need = Math.max(0, 2 - selectedCount);
+
+      if (need > 0) {
+        const candidates = sectionItems.filter((item) => !item.selected).slice(0, need);
+
+        for (const candidate of candidates) {
+          const updated = await api.selectSource({
+            projectId: activeProject.id,
+            sourceId: candidate.id,
+            selected: true
+          });
+          nextItems.splice(0, nextItems.length, ...ensureSourceShape(updated.items));
+        }
+      }
+    }
+
+    setSources(nextItems);
   };
 
   const handleStartGeneration = async () => {
@@ -317,41 +608,93 @@ export const MvpAppShell = () => {
     }
 
     setHasGeneratedDraft(false);
+    setExportError('');
     setIsGenerating(true);
     setGenerationSteps(defaultGenerationSteps());
 
-    for (let idx = 0; idx < defaultGenerationSteps().length; idx += 1) {
-      // eslint-disable-next-line no-await-in-loop
-      await runStep(idx);
+    await runStep(0);
+    await runStep(1);
+
+    let retryCount = 0;
+    let generated = false;
+
+    while (!generated && retryCount <= 2) {
+      setGenerationSteps((prev) => prev.map((item, idx) => (idx === 2 ? { ...item, status: 'running' } : item)));
+
+      const response = await api.generateDraft({
+        projectId: activeProject.id,
+        title: activeProject.title,
+        outlineText: JSON.stringify(outlineCandidates[activeOutlineIndex] || {}),
+        sourceText: JSON.stringify(sources.filter((item) => item.selected)),
+        retryCount
+      });
+
+      if (response.ok) {
+        const payload = (await response.json()) as {
+          data: {
+            content: string;
+          };
+        };
+
+        setDraftContent(payload.data.content);
+        setGenerationSteps((prev) => prev.map((item, idx) => (idx === 2 ? { ...item, status: 'done' } : item)));
+        generated = true;
+        break;
+      }
+
+      const errorPayload = (await response.json()) as {
+        error?: string;
+        data?: {
+          missingSections?: string[];
+        };
+      };
+
+      if (response.status === 422 && errorPayload.error === 'INSUFFICIENT_CITATIONS') {
+        const missingSections = errorPayload.data?.missingSections || [];
+        if (retryCount >= 2) {
+          setExportError(`生成失败：引用不足（${missingSections.join('、')}），已重试 2 次。`);
+          break;
+        }
+
+        await autoFillMissingSections(missingSections);
+        retryCount += 1;
+        continue;
+      }
+
+      setExportError('生成失败，请稍后重试。');
+      break;
     }
 
-    const selectedCount = sources.filter((item) => item.selected).length;
-    const draftFooter =
-      selectedCount > 0
-        ? `\n\n参考资料条目（演示）：${selectedCount} 条。`
-        : '\n\n提示：当前未选择资料库来源，建议先补充资料后再生成。';
+    await runStep(3);
+    await runStep(4);
 
-    setDraftContent(`${createInitialDraft(activeProject.title)}${draftFooter}`);
     setIsGenerating(false);
-    setHasGeneratedDraft(true);
-    updateProject(activeProject.id, { stage: 'editor', progress: 88 });
+
+    if (generated) {
+      setHasGeneratedDraft(true);
+      await syncProjectStage(activeProject.id, 'editor', 88);
+    }
   };
 
-  const handleGoEditor = () => {
+  const handleGoEditor = async () => {
     if (!activeProject) {
       return;
     }
 
     setView('editor');
-    updateProject(activeProject.id, { stage: 'editor', progress: 90 });
+    persistUiState('editor', activeProject.id);
+    await syncProjectStage(activeProject.id, 'editor', 92);
   };
 
-  const handleProjectTitleChange = (value: string) => {
+  const handleProjectTitleChange = async (value: string) => {
     if (!activeProject) {
       return;
     }
 
-    setProjects((prev) => prev.map((item) => (item.id === activeProject.id ? { ...item, title: value || '未命名课题', lastEdit: '刚刚' } : item)));
+    const title = value || '未命名课题';
+    setProjects((prev) => prev.map((item) => (item.id === activeProject.id ? { ...item, title, lastEdit: '刚刚' } : item)));
+
+    await api.updateProject(activeProject.id, { title });
   };
 
   const handleExportDocx = () => {
@@ -382,7 +725,15 @@ export const MvpAppShell = () => {
 
   const renderContent = () => {
     if (!activeProject && view !== 'landing' && view !== 'reservoir') {
-      return <DashboardView projects={projects} onNewProject={handleNewProject} onOpenProject={handleOpenProject} onArchiveProject={handleArchiveProject} onOpenReservoir={() => setView('reservoir')} />;
+      return (
+        <DashboardView
+          projects={projects}
+          onNewProject={handleNewProject}
+          onOpenProject={handleOpenProject}
+          onArchiveProject={handleArchiveProject}
+          onOpenReservoir={() => setViewWithPersist('reservoir')}
+        />
+      );
     }
 
     switch (view) {
@@ -395,7 +746,7 @@ export const MvpAppShell = () => {
             onNewProject={handleNewProject}
             onOpenProject={handleOpenProject}
             onArchiveProject={handleArchiveProject}
-            onOpenReservoir={() => setView('reservoir')}
+            onOpenReservoir={() => setViewWithPersist('reservoir')}
           />
         );
       case 'interview':
@@ -403,7 +754,7 @@ export const MvpAppShell = () => {
           <InterviewView
             messages={messages}
             sufficiencyScore={sufficiencyScore}
-            onBackDashboard={() => setView('dashboard')}
+            onBackDashboard={() => setViewWithPersist('dashboard')}
             onSendMessage={handleSendMessage}
             onSkipQuestion={handleSkipQuestion}
             onSwitchTopic={handleSwitchTopic}
@@ -416,7 +767,7 @@ export const MvpAppShell = () => {
             candidates={outlineCandidates}
             activeIndex={activeOutlineIndex}
             versions={outlineVersions}
-            onBackDashboard={() => setView('dashboard')}
+            onBackDashboard={() => setViewWithPersist('dashboard')}
             onSetActiveIndex={setActiveOutlineIndex}
             onRegenerate={handleRegenerateOutline}
             onConfirm={handleConfirmOutline}
@@ -429,10 +780,12 @@ export const MvpAppShell = () => {
       case 'sources':
         return (
           <SourcesView
+            projectId={activeProject?.id || ''}
             sources={sources}
-            onBackOutline={() => setView('outline')}
+            onBackOutline={() => setViewWithPersist('outline')}
             onRefreshSearch={handleRefreshSearch}
             onToggleSource={handleToggleSource}
+            onAddManualSource={handleAddManualSource}
             onContinueGeneration={handleContinueGeneration}
           />
         );
@@ -442,7 +795,7 @@ export const MvpAppShell = () => {
             steps={generationSteps}
             isGenerating={isGenerating}
             hasGeneratedDraft={hasGeneratedDraft}
-            onBackSources={() => setView('sources')}
+            onBackSources={() => setViewWithPersist('sources')}
             onStartGeneration={handleStartGeneration}
             onGoEditor={handleGoEditor}
           />
@@ -454,10 +807,10 @@ export const MvpAppShell = () => {
             draftContent={draftContent}
             sources={sources}
             exportError={exportError}
-            onBackGeneration={() => setView('generation')}
+            onBackGeneration={() => setViewWithPersist('generation')}
             onProjectTitleChange={handleProjectTitleChange}
             onDraftChange={setDraftContent}
-            onOpenSources={() => setView('sources')}
+            onOpenSources={() => setViewWithPersist('sources')}
             onExportDocx={handleExportDocx}
             onExportPdf={handleExportPdf}
           />
@@ -466,7 +819,7 @@ export const MvpAppShell = () => {
         return (
           <ReservoirView
             archivedProjects={archivedProjects}
-            onBackDashboard={() => setView('dashboard')}
+            onBackDashboard={() => setViewWithPersist('dashboard')}
             onRestoreProject={handleRestoreProject}
           />
         );
@@ -479,7 +832,7 @@ export const MvpAppShell = () => {
     <div className="min-h-screen bg-[#FAFAFA] text-slate-900 selection:bg-[#0052FF] selection:text-white">
       {view !== 'landing' ? (
         <header className="sticky top-0 z-50 flex h-20 items-center justify-between border-b border-slate-200 bg-white px-6">
-          <button type="button" className="flex items-center gap-3" onClick={() => setView('dashboard')}>
+          <button type="button" className="flex items-center gap-3" onClick={() => setViewWithPersist('dashboard')}>
             <div className="bg-gradient-primary flex h-8 w-8 items-center justify-center rounded-lg text-white">S</div>
             <span className="hidden font-serif text-lg font-bold md:block">校研智申</span>
           </button>
@@ -496,7 +849,7 @@ export const MvpAppShell = () => {
               <button
                 type="button"
                 key={nav.key}
-                onClick={() => setView(nav.key as AppView)}
+                onClick={() => setViewWithPersist(nav.key as AppView)}
                 className={`text-sm font-medium transition-colors ${view === nav.key ? 'text-[#0052FF]' : 'text-slate-500 hover:text-slate-900'}`}
               >
                 {nav.label}
@@ -512,7 +865,13 @@ export const MvpAppShell = () => {
               </div>
               <span className="hidden text-sm font-medium text-slate-700 sm:block">张教授</span>
             </div>
-            <Button variant="ghost" size="sm" className="!px-2 text-slate-400" icon={LogOut} onClick={() => setView('landing')} />
+            <Button
+              variant="ghost"
+              size="sm"
+              className="!px-2 text-slate-400"
+              icon={LogOut}
+              onClick={() => setViewWithPersist('landing')}
+            />
           </div>
         </header>
       ) : null}

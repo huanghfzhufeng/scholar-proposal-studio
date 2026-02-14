@@ -7,7 +7,7 @@ import type { ArchivedProject } from '@/components/mvp/types';
 type ReservoirViewProps = {
   archivedProjects: ArchivedProject[];
   onBackDashboard: () => void;
-  onRestoreProject: (projectId: number) => void;
+  onRestoreProject: (projectId: string) => void;
 };
 
 export const ReservoirView = ({ archivedProjects, onBackDashboard, onRestoreProject }: ReservoirViewProps) => {

@@ -21,3 +21,26 @@ export async function DELETE(_request: Request, context: Params) {
 
   return NextResponse.json({ data: updated });
 }
+
+export async function PATCH(request: Request, context: Params) {
+  const { id } = context.params;
+  const existing = mockDb.projects.get(id);
+
+  if (!existing) {
+    return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+  }
+
+  const body = (await request.json().catch(() => ({}))) as {
+    title?: string;
+    status?: string;
+  };
+
+  const updated = upsertProject({
+    ...existing,
+    title: body.title?.trim() || existing.title,
+    status: body.status || existing.status,
+    updatedAt: nowIso()
+  });
+
+  return NextResponse.json({ data: updated });
+}

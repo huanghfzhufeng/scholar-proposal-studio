@@ -6,23 +6,42 @@ import { Badge, Button } from '@/components/mvp/ui';
 import type { SourceItem } from '@/components/mvp/types';
 
 type SourcesViewProps = {
+  projectId: string;
   sources: SourceItem[];
   onBackOutline: () => void;
   onRefreshSearch: () => void;
   onToggleSource: (sourceId: string) => void;
+  onAddManualSource: (payload: {
+    title: string;
+    url: string;
+    source: string;
+    year: string;
+    abstract: string;
+    sectionKey: SourceItem['sectionKey'];
+  }) => Promise<void>;
   onContinueGeneration: () => void;
 };
 
 const sectionOptions: Array<'全部' | SourceItem['sectionKey']> = ['全部', '立项依据', '研究内容', '研究基础'];
 
 export const SourcesView = ({
+  projectId,
   sources,
   onBackOutline,
   onRefreshSearch,
   onToggleSource,
+  onAddManualSource,
   onContinueGeneration
 }: SourcesViewProps) => {
   const [filter, setFilter] = useState<typeof sectionOptions[number]>('全部');
+  const [showManualForm, setShowManualForm] = useState(false);
+  const [manualTitle, setManualTitle] = useState('');
+  const [manualUrl, setManualUrl] = useState('');
+  const [manualSource, setManualSource] = useState('');
+  const [manualYear, setManualYear] = useState(new Date().getFullYear().toString());
+  const [manualAbstract, setManualAbstract] = useState('');
+  const [manualSectionKey, setManualSectionKey] = useState<SourceItem['sectionKey']>('研究内容');
+  const [manualError, setManualError] = useState('');
 
   const filteredSources = useMemo(() => {
     if (filter === '全部') {
@@ -33,6 +52,29 @@ export const SourcesView = ({
   }, [filter, sources]);
 
   const selectedCount = sources.filter((item) => item.selected).length;
+
+  const handleManualSubmit = async () => {
+    if (!manualTitle.trim() || !manualUrl.trim()) {
+      setManualError('请至少填写标题和链接。');
+      return;
+    }
+
+    setManualError('');
+    await onAddManualSource({
+      title: manualTitle.trim(),
+      url: manualUrl.trim(),
+      source: manualSource.trim() || 'Manual Entry',
+      year: manualYear.trim() || new Date().getFullYear().toString(),
+      abstract: manualAbstract.trim() || '手动补充资料。',
+      sectionKey: manualSectionKey
+    });
+
+    setManualTitle('');
+    setManualUrl('');
+    setManualSource('');
+    setManualAbstract('');
+    setShowManualForm(false);
+  };
 
   return (
     <div className="mx-auto w-full max-w-7xl animate-in p-6 fade-in lg:p-12">
@@ -53,6 +95,65 @@ export const SourcesView = ({
             进入全文生成
           </Button>
         </div>
+      </div>
+
+      <div className="mb-6 rounded-2xl border border-slate-200 bg-white p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="text-sm text-slate-600">项目 ID：{projectId}</div>
+          <Button size="sm" variant="outline" onClick={() => setShowManualForm((prev) => !prev)}>
+            {showManualForm ? '收起手动添加' : '手动添加资料'}
+          </Button>
+        </div>
+
+        {showManualForm ? (
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            <input
+              value={manualTitle}
+              onChange={(event) => setManualTitle(event.target.value)}
+              className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-blue-200"
+              placeholder="资料标题"
+            />
+            <input
+              value={manualUrl}
+              onChange={(event) => setManualUrl(event.target.value)}
+              className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-blue-200"
+              placeholder="资料链接"
+            />
+            <input
+              value={manualSource}
+              onChange={(event) => setManualSource(event.target.value)}
+              className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-blue-200"
+              placeholder="来源（如 Nature）"
+            />
+            <input
+              value={manualYear}
+              onChange={(event) => setManualYear(event.target.value)}
+              className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-blue-200"
+              placeholder="年份"
+            />
+            <select
+              value={manualSectionKey}
+              onChange={(event) => setManualSectionKey(event.target.value as SourceItem['sectionKey'])}
+              className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-blue-200"
+            >
+              <option value="立项依据">立项依据</option>
+              <option value="研究内容">研究内容</option>
+              <option value="研究基础">研究基础</option>
+            </select>
+            <input
+              value={manualAbstract}
+              onChange={(event) => setManualAbstract(event.target.value)}
+              className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-blue-200"
+              placeholder="摘要（可选）"
+            />
+            <div className="md:col-span-2 flex items-center justify-between gap-3">
+              {manualError ? <p className="text-xs text-red-600">{manualError}</p> : <span />}
+              <Button size="sm" onClick={handleManualSubmit}>
+                保存到资料库
+              </Button>
+            </div>
+          </div>
+        ) : null}
       </div>
 
       <div className="mb-6 grid gap-4 rounded-2xl border border-slate-200 bg-white p-4 md:grid-cols-[1fr_auto_auto] md:items-center">
