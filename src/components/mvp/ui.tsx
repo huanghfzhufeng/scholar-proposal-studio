@@ -2,7 +2,7 @@ import type { LucideIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 type ButtonProps = {
-  children: ReactNode;
+  children?: ReactNode;
   variant?: 'primary' | 'outline' | 'ghost' | 'secondary' | 'danger';
   className?: string;
   icon?: LucideIcon;
