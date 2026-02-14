@@ -1155,7 +1155,7 @@ export const MvpAppShell = () => {
               className="!px-2 text-slate-400"
               icon={LogOut}
               onClick={() => {
-                persistUiState(view === 'landing' ? 'dashboard' : view, activeProjectId);
+                persistUiState(view, activeProjectId);
                 router.push('/');
               }}
             />

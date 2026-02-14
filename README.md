@@ -38,6 +38,10 @@ POSTGRES_PORT=5432
 APP_PORT=3000
 USE_REAL_LLM=false
 MINIMAX_API_KEY=
+MINIMAX_BASE_URL=https://api.minimax.io/anthropic
+MINIMAX_MODEL=MiniMax-M2.5
+MINIMAX_ANTHROPIC_VERSION=2023-06-01
+MINIMAX_MAX_TOKENS=2048
 USE_REAL_SEARCH=false
 TAVILY_API_KEY=
 EOF
@@ -78,4 +82,5 @@ cp .env.example .env.local
 
 - 若不填写 API Key，系统将自动使用本地降级逻辑（mock）运行。
 - 若填写并开启 `USE_REAL_LLM/USE_REAL_SEARCH`，将走真实服务调用。
+- MiniMax 默认按 Anthropic 兼容协议调用：`MINIMAX_BASE_URL=https://api.minimax.io/anthropic`。
 - 若配置 `DATABASE_URL` 且 `USE_PRISMA_STORAGE=true`，后端将使用 PostgreSQL 持久化存储。
