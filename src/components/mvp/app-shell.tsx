@@ -775,6 +775,64 @@ export const MvpAppShell = () => {
     setGenerationSteps((prev) => prev.map((item, idx) => (idx === index ? { ...item, status: 'done' } : item)));
   };
 
+  const runGenerationStream = (jobId: string) =>
+    new Promise<void>((resolve) => {
+      if (typeof window === 'undefined' || typeof window.EventSource === 'undefined') {
+        resolve();
+        return;
+      }
+
+      let finished = false;
+      const source = new EventSource(`/api/jobs/${jobId}/stream`);
+      const timer = window.setTimeout(() => {
+        if (finished) {
+          return;
+        }
+
+        finished = true;
+        source.close();
+        resolve();
+      }, 6000);
+
+      const complete = () => {
+        if (finished) {
+          return;
+        }
+
+        finished = true;
+        window.clearTimeout(timer);
+        source.close();
+        resolve();
+      };
+
+      const markStep = (index: number, status: GenerationStep['status']) => {
+        setGenerationSteps((prev) => prev.map((item, idx) => (idx === index ? { ...item, status } : item)));
+      };
+
+      source.addEventListener('queued', () => {
+        markStep(0, 'running');
+      });
+
+      source.addEventListener('running', () => {
+        markStep(0, 'done');
+        markStep(1, 'running');
+      });
+
+      source.addEventListener('step_done', () => {
+        markStep(1, 'done');
+        markStep(2, 'running');
+      });
+
+      source.addEventListener('completed', () => {
+        markStep(2, 'done');
+        complete();
+      });
+
+      source.onerror = () => {
+        complete();
+      };
+    });
+
   const autoFillMissingSections = async (missingSections: string[]) => {
     if (!activeProject) {
       return;
@@ -820,9 +878,7 @@ export const MvpAppShell = () => {
     setExportError('');
     setIsGenerating(true);
     setGenerationSteps(defaultGenerationSteps());
-
-    await runStep(0);
-    await runStep(1);
+    const streamPromise = runGenerationStream(`draft-${activeProject.id}-${Date.now()}`);
 
     let retryCount = 0;
     let generated = false;
@@ -886,6 +942,8 @@ export const MvpAppShell = () => {
       setExportError('生成失败，请稍后重试。');
       break;
     }
+
+    await streamPromise;
 
     await runStep(3);
     await runStep(4);
