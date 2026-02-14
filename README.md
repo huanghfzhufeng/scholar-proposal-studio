@@ -10,6 +10,12 @@
 - 软删除归档恢复
 - 生成前引用数量校验（每个一级章节 >= 2 条）
 
+## 界面展示
+
+| 工作台 (Dashboard) | 生成预览 (Preview) |
+| :---: | :---: |
+| ![Dashboard](docs/images/dashboard.png) | ![Draft Preview](docs/images/draft_preview.png) |
+
 ## 运行方式
 
 ```bash
