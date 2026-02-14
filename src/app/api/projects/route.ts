@@ -3,7 +3,10 @@ import { mockDb, nowIso, upsertProject } from '@/lib/server/mock-db';
 
 export async function GET() {
   return NextResponse.json({
-    data: Array.from(mockDb.projects.values())
+    data: {
+      active: Array.from(mockDb.projects.values()).filter((item) => !item.deletedAt),
+      archived: Array.from(mockDb.projects.values()).filter((item) => Boolean(item.deletedAt))
+    }
   });
 }
 

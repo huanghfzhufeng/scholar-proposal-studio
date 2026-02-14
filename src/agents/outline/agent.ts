@@ -15,12 +15,17 @@ export class OutlineAgent {
   run(input: OutlineInput): OutlineOutput {
     assertOutlineInput(input);
 
+    const pool: OutlineCandidate[] = [
+      buildCandidate('方案 A', 'Innovation'),
+      buildCandidate('方案 B', 'Application'),
+      buildCandidate('方案 C', 'Interdisciplinary'),
+      buildCandidate('方案 D', 'Methodology'),
+      buildCandidate('方案 E', 'System')
+    ];
+    const count = Math.floor(Math.random() * 4) + 2;
+
     return {
-      candidates: [
-        buildCandidate('方案 A', 'Innovation'),
-        buildCandidate('方案 B', 'Application'),
-        buildCandidate('方案 C', 'Interdisciplinary')
-      ]
+      candidates: pool.slice(0, count)
     };
   }
 }

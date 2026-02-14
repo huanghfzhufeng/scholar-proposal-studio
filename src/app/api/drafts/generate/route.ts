@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { DraftAgent } from '@/agents/draft';
-import { mockDb } from '@/lib/server/mock-db';
+import { getRetrievalItems, mockDb } from '@/lib/server/mock-db';
+
+const sectionKeys: Array<'立项依据' | '研究内容' | '研究基础'> = ['立项依据', '研究内容', '研究基础'];
 
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => ({}))) as {
@@ -8,7 +10,34 @@ export async function POST(request: Request) {
     title?: string;
     outlineText?: string;
     sourceText?: string;
+    retryCount?: number;
   };
+
+  if (!body.projectId) {
+    return NextResponse.json({ error: 'projectId is required' }, { status: 400 });
+  }
+
+  const selectedItems = getRetrievalItems(body.projectId).filter((item) => item.selected);
+  const sectionCountMap = sectionKeys.reduce<Record<string, number>>((acc, key) => {
+    acc[key] = selectedItems.filter((item) => item.sectionKey === key).length;
+    return acc;
+  }, {});
+
+  const missingSections = sectionKeys.filter((key) => sectionCountMap[key] < 2);
+
+  if (missingSections.length > 0) {
+    return NextResponse.json(
+      {
+        error: 'INSUFFICIENT_CITATIONS',
+        data: {
+          missingSections,
+          sectionCountMap,
+          retryCount: body.retryCount ?? 0
+        }
+      },
+      { status: 422 }
+    );
+  }
 
   const agent = new DraftAgent();
   const output = agent.run({
@@ -17,9 +46,12 @@ export async function POST(request: Request) {
     sourceText: body.sourceText || '待补充'
   });
 
-  if (body.projectId) {
-    mockDb.drafts.set(body.projectId, output);
-  }
+  mockDb.drafts.set(body.projectId, output);
 
-  return NextResponse.json({ data: output });
+  return NextResponse.json({
+    data: {
+      ...output,
+      sectionCountMap
+    }
+  });
 }
