@@ -18,6 +18,10 @@ export type ProjectItem = {
   lastEdit: string;
 };
 
+export type ArchivedProject = ProjectItem & {
+  deletedAt: string;
+};
+
 export type InterviewMessage = {
   role: 'ai' | 'user';
   text: string;

@@ -2,6 +2,7 @@
 
 import { motion } from 'framer-motion';
 import { ArrowRight, CheckCircle2, Cpu, Database, MessageSquareText, PenTool, ShieldCheck, Zap } from 'lucide-react';
+import type { ComponentType } from 'react';
 import { Button, SectionLabel } from '@/components/mvp/ui';
 
 type LandingViewProps = {
@@ -11,10 +12,10 @@ type LandingViewProps = {
 const Navbar = ({ onLogin }: { onLogin: () => void }) => (
   <nav className="fixed top-0 z-50 w-full border-b border-slate-200/50 bg-[#FAFAFA]/80 backdrop-blur-md">
     <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-6">
-      <div className="flex cursor-pointer items-center gap-2" onClick={onLogin}>
+      <button type="button" className="flex cursor-pointer items-center gap-2" onClick={onLogin}>
         <div className="bg-gradient-primary flex h-8 w-8 items-center justify-center rounded-lg text-center font-serif font-bold text-white">S</div>
         <span className="font-serif text-xl font-bold tracking-tight">校研智申</span>
-      </div>
+      </button>
       <div className="hidden items-center gap-8 text-sm font-medium text-slate-600 md:flex">
         <a href="#features" className="transition-colors hover:text-[#0052FF]">
           核心功能
@@ -42,7 +43,7 @@ const FeatureCard = ({
   desc,
   delay
 }: {
-  icon: React.ComponentType<{ className?: string }>;
+  icon: ComponentType<{ className?: string }>;
   title: string;
   desc: string;
   delay: number;
@@ -218,11 +219,11 @@ export const LandingView = ({ onStart }: LandingViewProps) => {
               { step: '02', title: '大纲确立', desc: '多版本对比，拖拽式调整，锁定最优结构。', icon: Cpu },
               { step: '03', title: '生成与导出', desc: '一键生成整篇初稿，支持 Word/PDF 双导出。', icon: Zap }
             ].map((item) => (
-              <div key={item.step} className="group rounded-2xl border border-slate-100 bg-white p-8 shadow-sm transition-all duration-500 hover:shadow-xl">
+              <div key={item.step} className="group relative rounded-2xl border border-slate-100 bg-white p-8 shadow-sm transition-all duration-500 hover:shadow-xl">
                 <div className="mb-6 flex h-12 w-12 items-center justify-center rounded-lg bg-blue-50 text-[#0052FF]">
                   <item.icon className="h-6 w-6" />
                 </div>
-                <div className="font-serif absolute-right text-4xl font-bold text-slate-100">{item.step}</div>
+                <div className="absolute right-4 top-4 font-serif text-4xl font-bold text-slate-100">{item.step}</div>
                 <h3 className="mb-3 text-xl font-bold">{item.title}</h3>
                 <p className="text-sm leading-relaxed text-slate-500">{item.desc}</p>
               </div>
