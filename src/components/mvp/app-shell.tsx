@@ -735,26 +735,26 @@ export const MvpAppShell = () => {
     await api.updateProject(activeProject.id, { title });
   };
 
-  const handleExportDocx = () => {
+  const handleExportDocx = async () => {
     if (!activeProject) {
       return;
     }
 
     try {
-      exportAsDocx(activeProject.title, draftContent);
+      await exportAsDocx(activeProject.title, draftContent);
       setExportError('');
     } catch (error) {
       setExportError(error instanceof Error ? error.message : 'Word 导出失败');
     }
   };
 
-  const handleExportPdf = () => {
+  const handleExportPdf = async () => {
     if (!activeProject) {
       return;
     }
 
     try {
-      exportAsPdf(activeProject.title, draftContent);
+      await exportAsPdf(activeProject.title, draftContent);
       setExportError('');
     } catch (error) {
       setExportError(error instanceof Error ? error.message : 'PDF 导出失败');

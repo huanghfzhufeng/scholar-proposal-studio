@@ -1,13 +1,21 @@
 import { NextResponse } from 'next/server';
 
 export async function POST(request: Request) {
-  const body = (await request.json().catch(() => ({}))) as { projectTitle?: string };
-  const title = body.projectTitle?.trim() || `未命名课题-${Date.now()}`;
+  const body = (await request.json().catch(() => ({}))) as { projectTitle?: string; content?: string };
+  const title = body.projectTitle?.trim();
 
-  return NextResponse.json({
-    data: {
-      fileName: `${title}.pdf`,
-      downloadUrl: `/downloads/${encodeURIComponent(title)}.pdf`
+  if (!title) {
+    return NextResponse.json({ error: 'projectTitle is required' }, { status: 400 });
+  }
+
+  const fileName = `${title.replace(/[\\/:*?"<>|]/g, ' ').trim()}.pdf`;
+  const payload = body.content || '';
+
+  return new NextResponse(payload, {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`
     }
   });
 }
