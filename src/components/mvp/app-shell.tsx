@@ -843,6 +843,7 @@ export const MvpAppShell = () => {
         error?: string;
         data?: {
           missingSections?: string[];
+          unverifiedSourceIds?: string[];
         };
       };
 
@@ -856,6 +857,18 @@ export const MvpAppShell = () => {
         await autoFillMissingSections(missingSections);
         retryCount += 1;
         continue;
+      }
+
+      if (response.status === 422 && errorPayload.error === 'INSUFFICIENT_CONTENT_CITATIONS') {
+        const missingSections = errorPayload.data?.missingSections || [];
+        setExportError(`生成失败：正文引用不足（${missingSections.join('、')}），请补充来源后重试。`);
+        break;
+      }
+
+      if (response.status === 422 && errorPayload.error === 'UNVERIFIED_CITATIONS') {
+        const unverifiedSourceIds = errorPayload.data?.unverifiedSourceIds || [];
+        setExportError(`生成失败：检测到未核验引用（${unverifiedSourceIds.join('、')}）。`);
+        break;
       }
 
       setExportError('生成失败，请稍后重试。');

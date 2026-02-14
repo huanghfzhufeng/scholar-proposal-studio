@@ -8,6 +8,14 @@ export class DraftAgent {
   async run(input: DraftInput): Promise<DraftOutput> {
     assertDraftInput(input);
 
+    const allowedSourceIds = new Set(
+      draftTools
+        .parseSources(input.sourceText)
+        .filter((item) => item.selected)
+        .map((item) => item.id)
+    );
+    const groundedFallback = draftTools.buildGroundedDraft(input.title, input.sourceText);
+
     const apiKey = process.env.MINIMAX_API_KEY || '';
     const useRealLlm = process.env.USE_REAL_LLM === 'true';
 
@@ -23,8 +31,19 @@ export class DraftAgent {
         ]);
 
         if (result.text?.trim()) {
+          const normalized = draftTools.normalizeParagraphs(result.text);
+          const citations = draftTools.extractCitationIds(normalized);
+          const hasUnverified = citations.some((citation) => !allowedSourceIds.has(citation));
+          const insufficientSections = draftTools.findSectionsWithInsufficientCitations(normalized, 2);
+
+          if (hasUnverified || insufficientSections.length > 0) {
+            return {
+              content: groundedFallback
+            };
+          }
+
           return {
-            content: draftTools.normalizeParagraphs(result.text)
+            content: normalized
           };
         }
       } catch {
@@ -32,10 +51,8 @@ export class DraftAgent {
       }
     }
 
-    const raw = `${input.title}\n\n一、立项依据\n本课题围绕核心科学问题展开，结合现有研究进展与关键缺口提出研究假设。\n\n二、研究内容\n围绕研究目标设置任务分解、技术路线与验证方案，确保研究步骤可执行。\n\n三、研究基础\n课题组已具备前期研究积累、数据与平台条件，可支撑项目顺利实施。`;
-
     return {
-      content: draftTools.normalizeParagraphs(raw)
+      content: draftTools.normalizeParagraphs(groundedFallback)
     };
   }
 }

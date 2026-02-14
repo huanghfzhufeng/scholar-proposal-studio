@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { DraftAgent } from '@/agents/draft';
+import { draftTools } from '@/agents/draft/tools';
 import { getRetrievalItems, mockDb, upsertWorkflowState } from '@/lib/server/mock-db';
 
 const sectionKeys: Array<'立项依据' | '研究内容' | '研究基础'> = ['立项依据', '研究内容', '研究基础'];
@@ -45,6 +46,35 @@ export async function POST(request: Request) {
     outlineText: body.outlineText || '待补充',
     sourceText: body.sourceText || '待补充'
   });
+
+  const allowedSourceIds = new Set(selectedItems.map((item) => item.id));
+  const citationIds = draftTools.extractCitationIds(output.content);
+  const unverifiedSourceIds = Array.from(new Set(citationIds.filter((id) => !allowedSourceIds.has(id))));
+
+  if (unverifiedSourceIds.length > 0) {
+    return NextResponse.json(
+      {
+        error: 'UNVERIFIED_CITATIONS',
+        data: {
+          unverifiedSourceIds
+        }
+      },
+      { status: 422 }
+    );
+  }
+
+  const missingInContent = draftTools.findSectionsWithInsufficientCitations(output.content, 2);
+  if (missingInContent.length > 0) {
+    return NextResponse.json(
+      {
+        error: 'INSUFFICIENT_CONTENT_CITATIONS',
+        data: {
+          missingSections: missingInContent
+        }
+      },
+      { status: 422 }
+    );
+  }
 
   mockDb.drafts.set(body.projectId, output);
   upsertWorkflowState(body.projectId, {
