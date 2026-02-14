@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { OutlineAgent } from '@/agents/outline';
-import { mockDb } from '@/lib/server/mock-db';
+import { mockDb, upsertWorkflowState } from '@/lib/server/mock-db';
 
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => ({}))) as {
@@ -17,6 +17,22 @@ export async function POST(request: Request) {
 
   if (body.projectId) {
     mockDb.outlines.set(body.projectId, output);
+
+    const timestamp = Date.now();
+    upsertWorkflowState(body.projectId, {
+      outlineCandidates: output.candidates.map((candidate, idx) => ({
+        id: `candidate-${timestamp}-${idx}`,
+        title: candidate.label,
+        focus: candidate.focus,
+        fitScore: 88 + ((idx + 3) % 9),
+        content: candidate.sections.map((section, sectionIdx) => ({
+          id: sectionIdx + 1,
+          title: section.title,
+          subs: [...section.children]
+        }))
+      })),
+      activeOutlineIndex: 0
+    });
   }
 
   return NextResponse.json({ data: output });

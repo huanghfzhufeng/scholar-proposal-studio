@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { DraftAgent } from '@/agents/draft';
-import { getRetrievalItems, mockDb } from '@/lib/server/mock-db';
+import { getRetrievalItems, mockDb, upsertWorkflowState } from '@/lib/server/mock-db';
 
 const sectionKeys: Array<'立项依据' | '研究内容' | '研究基础'> = ['立项依据', '研究内容', '研究基础'];
 
@@ -47,6 +47,10 @@ export async function POST(request: Request) {
   });
 
   mockDb.drafts.set(body.projectId, output);
+  upsertWorkflowState(body.projectId, {
+    draftContent: output.content,
+    hasGeneratedDraft: true
+  });
 
   return NextResponse.json({
     data: {
