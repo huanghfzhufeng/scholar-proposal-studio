@@ -102,6 +102,22 @@ export const api = {
       body: JSON.stringify(payload)
     }),
 
+  interviewFinish: (payload: {
+    projectId: string;
+    summary: string;
+    sufficiencyScore: number;
+    reason?: 'user' | 'assistant';
+  }) =>
+    request<{
+      finished: boolean;
+      recommended: boolean;
+      reason: 'user' | 'assistant';
+      project: ApiProject;
+    }>('/api/interview/finish', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    }),
+
   generateOutlines: (payload: {
     projectId: string;
     projectTitle: string;

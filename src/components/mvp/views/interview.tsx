@@ -68,6 +68,12 @@ export const InterviewView = ({
             </div>
           </div>
 
+          {sufficiencyScore >= 80 ? (
+            <div className="rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
+              信息已较充分，建议结束访谈并进入大纲生成。
+            </div>
+          ) : null}
+
           <div className="space-y-2">
             <Button size="sm" variant="outline" className="w-full" icon={SkipForward} onClick={onSkipQuestion}>
               跳过当前问题
@@ -80,7 +86,7 @@ export const InterviewView = ({
 
         <div className="mt-auto">
           <Button className="w-full" variant="secondary" onClick={onJumpToOutline}>
-            跳过访谈，生成大纲
+            结束访谈，生成大纲
           </Button>
         </div>
       </div>

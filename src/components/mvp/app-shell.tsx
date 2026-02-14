@@ -548,6 +548,18 @@ export const MvpAppShell = () => {
 
     const next = clamp(Math.max(sufficiencyScore, 60), 0, 100);
     setSufficiencyScore(next);
+
+    try {
+      await api.interviewFinish({
+        projectId: activeProject.id,
+        summary: interviewSummary || messages.map((item) => item.text).join('\n'),
+        sufficiencyScore: next,
+        reason: 'user'
+      });
+    } catch {
+      // Continue to outline even if finish API is temporarily unavailable.
+    }
+
     await syncProjectStage(activeProject.id, 'outline', next);
 
     if (!outlineCandidates.length) {
