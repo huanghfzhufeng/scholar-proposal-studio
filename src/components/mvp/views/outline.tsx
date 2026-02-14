@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowLeft, CheckCircle2, GitCompare, Plus, RefreshCw, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowLeft, ArrowUp, CheckCircle2, GitCompare, Plus, RefreshCw, RotateCcw, Trash2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Badge, Button } from '@/components/mvp/ui';
 import type { OutlineCandidate, OutlineVersion } from '@/components/mvp/types';
@@ -17,6 +17,8 @@ type OutlineViewProps = {
   onChangeSubTitle: (candidateIndex: number, sectionIndex: number, subIndex: number, value: string) => void;
   onAddSubTitle: (candidateIndex: number, sectionIndex: number) => void;
   onRemoveSubTitle: (candidateIndex: number, sectionIndex: number, subIndex: number) => void;
+  onMoveSection: (candidateIndex: number, sectionIndex: number, direction: 'up' | 'down') => void;
+  onRestoreVersion: (versionId: string) => void;
 };
 
 const compareOutlineText = (left?: OutlineCandidate, right?: OutlineCandidate) => {
@@ -44,7 +46,9 @@ export const OutlineView = ({
   onChangeSectionTitle,
   onChangeSubTitle,
   onAddSubTitle,
-  onRemoveSubTitle
+  onRemoveSubTitle,
+  onMoveSection,
+  onRestoreVersion
 }: OutlineViewProps) => {
   const [leftVersionId, setLeftVersionId] = useState<string>('');
   const [rightVersionId, setRightVersionId] = useState<string>('');
@@ -108,6 +112,20 @@ export const OutlineView = ({
             {activeCandidate?.content.map((section, sectionIndex) => (
               <div key={section.id} className="group">
                 <div className="mb-3 flex items-center gap-3 rounded-lg border border-transparent p-2 transition-all hover:border-slate-200 hover:bg-slate-50">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="!h-8 !w-8 !p-0 text-slate-400"
+                    icon={ArrowUp}
+                    onClick={() => onMoveSection(activeIndex, sectionIndex, 'up')}
+                  />
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="!h-8 !w-8 !p-0 text-slate-400"
+                    icon={ArrowDown}
+                    onClick={() => onMoveSection(activeIndex, sectionIndex, 'down')}
+                  />
                   <input
                     value={section.title}
                     onChange={(event) => onChangeSectionTitle(activeIndex, sectionIndex, event.target.value)}
@@ -178,8 +196,13 @@ export const OutlineView = ({
 
           <div className="space-y-2 pt-2">
             {versions.slice(0, 5).map((version) => (
-              <div key={version.id} className="rounded-lg border border-slate-100 bg-white px-3 py-2 text-xs text-slate-500">
-                {version.label} • {version.createdAt}
+              <div key={version.id} className="flex items-center justify-between rounded-lg border border-slate-100 bg-white px-3 py-2 text-xs text-slate-500">
+                <span>
+                  {version.label} • {version.createdAt}
+                </span>
+                <Button size="sm" variant="ghost" className="!h-7 !px-2 text-[11px]" icon={RotateCcw} onClick={() => onRestoreVersion(version.id)}>
+                  恢复
+                </Button>
               </div>
             ))}
           </div>

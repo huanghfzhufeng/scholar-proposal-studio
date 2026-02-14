@@ -456,6 +456,44 @@ export const MvpAppShell = () => {
     });
   };
 
+  const handleMoveSection = (candidateIndex: number, sectionIndex: number, direction: 'up' | 'down') => {
+    updateCandidate(candidateIndex, (candidate) => {
+      const targetIndex = direction === 'up' ? sectionIndex - 1 : sectionIndex + 1;
+      if (targetIndex < 0 || targetIndex >= candidate.content.length) {
+        return candidate;
+      }
+
+      const next = [...candidate.content];
+      const [current] = next.splice(sectionIndex, 1);
+      next.splice(targetIndex, 0, current);
+
+      candidate.content = next.map((section, idx) => ({
+        ...section,
+        id: idx + 1
+      }));
+      return candidate;
+    });
+  };
+
+  const handleRestoreVersion = (versionId: string) => {
+    const version = outlineVersions.find((item) => item.id === versionId);
+    if (!version) {
+      return;
+    }
+
+    const restored = cloneOutline(version.outline);
+    const existingIndex = outlineCandidates.findIndex((item) => item.id === restored.id);
+
+    if (existingIndex >= 0) {
+      setOutlineCandidates((prev) => prev.map((item, idx) => (idx === existingIndex ? restored : item)));
+      setActiveOutlineIndex(existingIndex);
+      return;
+    }
+
+    setOutlineCandidates((prev) => [restored, ...prev]);
+    setActiveOutlineIndex(0);
+  };
+
   const handleConfirmOutline = async () => {
     if (!activeProject) {
       return;
@@ -775,6 +813,8 @@ export const MvpAppShell = () => {
             onChangeSubTitle={handleChangeSubTitle}
             onAddSubTitle={handleAddSubTitle}
             onRemoveSubTitle={handleRemoveSubTitle}
+            onMoveSection={handleMoveSection}
+            onRestoreVersion={handleRestoreVersion}
           />
         );
       case 'sources':
