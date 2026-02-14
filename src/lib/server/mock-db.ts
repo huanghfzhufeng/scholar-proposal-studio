@@ -2,6 +2,7 @@ import type { DraftOutput } from '@/agents/draft';
 import type { InterviewOutput } from '@/agents/interview';
 import type { OutlineOutput } from '@/agents/outline';
 import type { RetrievalItem, RetrievalOutput } from '@/agents/retrieval';
+import type { WorkflowStatePatch } from '@/shared/workflow-state';
 
 type ProjectRecord = {
   id: string;
@@ -18,6 +19,11 @@ const interviews = new Map<string, InterviewOutput>();
 const retrievals = new Map<string, RetrievalOutput>();
 const drafts = new Map<string, DraftOutput>();
 const lockedOutlines = new Map<string, unknown>();
+const workflowStates = new Map<string, WorkflowStateRecord>();
+
+type WorkflowStateRecord = WorkflowStatePatch & {
+  updatedAt: string;
+};
 
 export const mockDb = {
   projects,
@@ -25,7 +31,8 @@ export const mockDb = {
   lockedOutlines,
   interviews,
   retrievals,
-  drafts
+  drafts,
+  workflowStates
 };
 
 export const upsertProject = (project: ProjectRecord) => {
@@ -60,3 +67,27 @@ export const addManualRetrievalItem = (projectId: string, payload: Omit<Retrieva
 };
 
 export const nowIso = () => new Date().toISOString();
+
+export const upsertWorkflowState = (projectId: string, patch: WorkflowStatePatch) => {
+  const existing = workflowStates.get(projectId) || { updatedAt: nowIso() };
+  const sanitized = Object.fromEntries(Object.entries(patch).filter(([, value]) => value !== undefined)) as WorkflowStatePatch;
+
+  const updated: WorkflowStateRecord = {
+    ...existing,
+    ...sanitized,
+    updatedAt: nowIso()
+  };
+
+  workflowStates.set(projectId, updated);
+  return updated;
+};
+
+export const getWorkflowState = (projectId: string) => {
+  const state = workflowStates.get(projectId);
+  if (!state) {
+    return null;
+  }
+
+  const { updatedAt: _updatedAt, ...snapshot } = state;
+  return snapshot as WorkflowStatePatch;
+};

@@ -1,4 +1,5 @@
 import type { SourceItem } from '@/components/mvp/types';
+import type { WorkflowStatePatch } from '@/shared/workflow-state';
 
 type ApiResponse<T> = {
   data: T;
@@ -79,8 +80,15 @@ export const api = {
       lockedOutline: unknown;
       sources: SourceItem[];
       draft: { content: string } | null;
+      workflowState: WorkflowStatePatch | null;
     }>(`/api/projects/${projectId}/state`, {
       method: 'GET'
+    }),
+
+  saveProjectState: (projectId: string, workflowState: WorkflowStatePatch) =>
+    request<{ projectId: string; savedAt: string }>(`/api/projects/${projectId}/state`, {
+      method: 'PATCH',
+      body: JSON.stringify({ workflowState })
     }),
 
   interviewNext: (payload: {

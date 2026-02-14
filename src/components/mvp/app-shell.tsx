@@ -2,7 +2,7 @@
 
 import { AnimatePresence, motion } from 'framer-motion';
 import { FileText, History, LogOut, Search, User, Workflow } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   createInitialDraft,
   generateOutlineCandidates,
@@ -30,6 +30,7 @@ import type {
 } from '@/components/mvp/types';
 import { exportAsDocx, exportAsPdf } from '@/lib/export';
 import { api, type ApiProject } from '@/lib/api';
+import type { WorkflowStatePatch } from '@/shared/workflow-state';
 
 const UI_STATE_KEY = 'sps-ui-state-v1';
 const DRAFT_PREFIX = 'sps-draft-';
@@ -125,6 +126,70 @@ const cloneOutline = (candidate: OutlineCandidate): OutlineCandidate => ({
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
+const normalizeGenerationSteps = (steps: WorkflowStatePatch['generationSteps']): GenerationStep[] => {
+  if (!steps?.length) {
+    return defaultGenerationSteps();
+  }
+
+  return steps.map((step) => ({
+    key: step.key,
+    title: step.title,
+    status: step.status
+  }));
+};
+
+const normalizeMessages = (messages: WorkflowStatePatch['messages']) => {
+  if (!messages?.length) {
+    return initialInterviewMessages;
+  }
+
+  return messages.map((message) => ({
+    role: message.role,
+    text: message.text
+  }));
+};
+
+const normalizeOutlineCandidates = (candidates: WorkflowStatePatch['outlineCandidates']): OutlineCandidate[] => {
+  if (!candidates?.length) {
+    return [];
+  }
+
+  return candidates.map((candidate) => ({
+    id: candidate.id,
+    title: candidate.title,
+    focus: candidate.focus,
+    fitScore: candidate.fitScore,
+    content: candidate.content.map((section) => ({
+      id: section.id,
+      title: section.title,
+      subs: [...section.subs]
+    }))
+  }));
+};
+
+const normalizeOutlineVersions = (versions: WorkflowStatePatch['outlineVersions']): OutlineVersion[] => {
+  if (!versions?.length) {
+    return [];
+  }
+
+  return versions.map((version) => ({
+    id: version.id,
+    createdAt: version.createdAt,
+    label: version.label,
+    outline: {
+      id: version.outline.id,
+      title: version.outline.title,
+      focus: version.outline.focus,
+      fitScore: version.outline.fitScore,
+      content: version.outline.content.map((section) => ({
+        id: section.id,
+        title: section.title,
+        subs: [...section.subs]
+      }))
+    }
+  }));
+};
+
 export const MvpAppShell = () => {
   const [view, setView] = useState<AppView>('landing');
   const [projects, setProjects] = useState<ProjectItem[]>([]);
@@ -146,6 +211,8 @@ export const MvpAppShell = () => {
 
   const [draftContent, setDraftContent] = useState('');
   const [exportError, setExportError] = useState('');
+  const [isRestoringState, setIsRestoringState] = useState(true);
+  const lastSavedSnapshotRef = useRef<string>('');
 
   const activeProject = useMemo(() => projects.find((item) => item.id === activeProjectId), [projects, activeProjectId]);
 
@@ -195,40 +262,67 @@ export const MvpAppShell = () => {
     setExportError('');
   };
 
-  const loadProjectState = async (projectId: string) => {
+  const loadProjectState = async (projectId: string, fallbackTitle: string) => {
     try {
       const state = await api.getProjectState(projectId);
+      const workflowState = state.workflowState;
       const localDraft = localStorage.getItem(`${DRAFT_PREFIX}${projectId}`);
 
-      if (state.interview) {
+      setMessages(normalizeMessages(workflowState?.messages));
+
+      if (typeof workflowState?.sufficiencyScore === 'number') {
+        setSufficiencyScore(clamp(Math.round(workflowState.sufficiencyScore), 0, 100));
+      } else if (state.interview) {
         setSufficiencyScore(Math.round(state.interview.sufficiencyScore * 100));
-        setInterviewSummary(state.interview.summary);
+      } else {
+        setSufficiencyScore(16);
       }
 
-      if (state.outlines?.candidates?.length) {
+      if (typeof workflowState?.interviewSummary === 'string') {
+        setInterviewSummary(workflowState.interviewSummary);
+      } else if (state.interview) {
+        setInterviewSummary(state.interview.summary);
+      } else {
+        setInterviewSummary('');
+      }
+
+      const restoredCandidates = normalizeOutlineCandidates(workflowState?.outlineCandidates);
+
+      if (restoredCandidates.length) {
+        setOutlineCandidates(restoredCandidates);
+        setActiveOutlineIndex(clamp(workflowState?.activeOutlineIndex ?? 0, 0, restoredCandidates.length - 1));
+      } else if (state.outlines?.candidates?.length) {
         const converted = convertOutlineCandidates(state.outlines.candidates);
         setOutlineCandidates(converted);
         setActiveOutlineIndex(0);
-      }
-
-      if (state.sources?.length) {
-        setSources(ensureSourceShape(state.sources));
-      }
-
-      if (state.draft?.content) {
-        setDraftContent(localDraft || state.draft.content);
-        setHasGeneratedDraft(true);
       } else {
-        setDraftContent(localDraft || createInitialDraft(state.project.title));
+        setOutlineCandidates(generateOutlineCandidates());
+        setActiveOutlineIndex(0);
+      }
+
+      setOutlineVersions(normalizeOutlineVersions(workflowState?.outlineVersions));
+      setSources(state.sources?.length ? ensureSourceShape(state.sources) : []);
+      setGenerationSteps(normalizeGenerationSteps(workflowState?.generationSteps));
+      setIsGenerating(false);
+      setExportError('');
+
+      const serverDraft = typeof workflowState?.draftContent === 'string' ? workflowState.draftContent : state.draft?.content;
+      const fallbackDraft = createInitialDraft(state.project.title || fallbackTitle);
+      setDraftContent(localDraft || serverDraft || fallbackDraft);
+
+      if (typeof workflowState?.hasGeneratedDraft === 'boolean') {
+        setHasGeneratedDraft(workflowState.hasGeneratedDraft);
+      } else {
+        setHasGeneratedDraft(Boolean(state.draft?.content));
       }
     } catch {
-      if (activeProject) {
-        resetFlowForProject(activeProject.title, activeProject.id);
-      }
+      resetFlowForProject(fallbackTitle, projectId);
     }
   };
 
   const bootstrap = async () => {
+    setIsRestoringState(true);
+
     try {
       const payload = await api.listProjects();
       const active = payload.active.map(mapApiProject);
@@ -253,14 +347,17 @@ export const MvpAppShell = () => {
 
       const preferredId = parsed.activeProjectId && active.some((item) => item.id === parsed.activeProjectId) ? parsed.activeProjectId : active[0].id;
       const preferredView = parsed.view && parsed.view !== 'landing' ? parsed.view : 'dashboard';
+      const preferredProject = active.find((item) => item.id === preferredId) || active[0];
 
       setActiveProjectId(preferredId);
-      await loadProjectState(preferredId);
+      await loadProjectState(preferredId, preferredProject.title);
       setView(preferredView);
       persistUiState(preferredView, preferredId);
     } catch {
       // Fallback for first launch when API is unavailable.
       setView('dashboard');
+    } finally {
+      setIsRestoringState(false);
     }
   };
 
@@ -275,6 +372,58 @@ export const MvpAppShell = () => {
     localStorage.setItem(`${DRAFT_PREFIX}${activeProjectId}`, draftContent);
   }, [activeProjectId, draftContent]);
 
+  useEffect(() => {
+    lastSavedSnapshotRef.current = '';
+  }, [activeProjectId]);
+
+  useEffect(() => {
+    if (!activeProjectId || isRestoringState) {
+      return;
+    }
+
+    const snapshot: WorkflowStatePatch = {
+      messages,
+      sufficiencyScore,
+      interviewSummary,
+      outlineCandidates,
+      activeOutlineIndex,
+      outlineVersions,
+      generationSteps,
+      hasGeneratedDraft,
+      draftContent
+    };
+
+    const serialized = JSON.stringify(snapshot);
+    if (serialized === lastSavedSnapshotRef.current) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      void api
+        .saveProjectState(activeProjectId, snapshot)
+        .then(() => {
+          lastSavedSnapshotRef.current = serialized;
+        })
+        .catch(() => {
+          // Ignore temporary network errors and try again on next state change.
+        });
+    }, 700);
+
+    return () => window.clearTimeout(timer);
+  }, [
+    activeOutlineIndex,
+    activeProjectId,
+    draftContent,
+    generationSteps,
+    hasGeneratedDraft,
+    interviewSummary,
+    isRestoringState,
+    messages,
+    outlineCandidates,
+    outlineVersions,
+    sufficiencyScore
+  ]);
+
   const handleStartFromLanding = () => {
     setViewWithPersist('dashboard');
   };
@@ -286,23 +435,33 @@ export const MvpAppShell = () => {
       return;
     }
 
-    setActiveProjectId(projectId);
-    resetFlowForProject(project.title, project.id);
-    await loadProjectState(projectId);
-    const nextView = stageToView[project.stage];
-    setView(nextView);
-    persistUiState(nextView, projectId);
+    setIsRestoringState(true);
+    try {
+      setActiveProjectId(projectId);
+      resetFlowForProject(project.title, project.id);
+      await loadProjectState(projectId, project.title);
+      const nextView = stageToView[project.stage];
+      setView(nextView);
+      persistUiState(nextView, projectId);
+    } finally {
+      setIsRestoringState(false);
+    }
   };
 
   const handleNewProject = async () => {
-    const created = await api.createProject(`未命名课题-${projects.length + 1}`);
-    const project = mapApiProject(created);
+    setIsRestoringState(true);
+    try {
+      const created = await api.createProject(`未命名课题-${projects.length + 1}`);
+      const project = mapApiProject(created);
 
-    setProjects((prev) => [project, ...prev]);
-    setActiveProjectId(project.id);
-    resetFlowForProject(project.title, project.id);
-    setView('interview');
-    persistUiState('interview', project.id);
+      setProjects((prev) => [project, ...prev]);
+      setActiveProjectId(project.id);
+      resetFlowForProject(project.title, project.id);
+      setView('interview');
+      persistUiState('interview', project.id);
+    } finally {
+      setIsRestoringState(false);
+    }
   };
 
   const handleArchiveProject = async (projectId: string) => {
