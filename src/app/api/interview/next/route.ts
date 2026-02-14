@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { InterviewAgent } from '@/agents/interview';
-import { mockDb, upsertWorkflowState } from '@/lib/server/mock-db';
+import { projectStore } from '@/lib/server/project-store';
 
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => ({}))) as {
@@ -18,8 +18,6 @@ export async function POST(request: Request) {
   });
 
   if (body.projectId) {
-    mockDb.interviews.set(body.projectId, output);
-
     const nextMessages = [
       ...(body.history || [])
         .filter((item) => item.role === 'assistant' || item.role === 'user')
@@ -30,7 +28,7 @@ export async function POST(request: Request) {
       { role: 'ai' as const, text: output.nextQuestion }
     ];
 
-    upsertWorkflowState(body.projectId, {
+    await projectStore.saveInterview(body.projectId, output, {
       messages: nextMessages,
       sufficiencyScore: Math.round(output.sufficiencyScore * 100),
       interviewSummary: output.summary

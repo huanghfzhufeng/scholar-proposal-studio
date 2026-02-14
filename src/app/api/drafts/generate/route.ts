@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { DraftAgent } from '@/agents/draft';
 import { draftTools } from '@/agents/draft/tools';
-import { getRetrievalItems, mockDb, upsertWorkflowState } from '@/lib/server/mock-db';
+import { projectStore } from '@/lib/server/project-store';
 
 const sectionKeys: Array<'立项依据' | '研究内容' | '研究基础'> = ['立项依据', '研究内容', '研究基础'];
 
@@ -18,7 +18,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'projectId is required' }, { status: 400 });
   }
 
-  const selectedItems = getRetrievalItems(body.projectId).filter((item) => item.selected);
+  const selectedItems = await projectStore.listSelectedSources(body.projectId);
   const sectionCountMap = sectionKeys.reduce<Record<string, number>>((acc, key) => {
     acc[key] = selectedItems.filter((item) => item.sectionKey === key).length;
     return acc;
@@ -76,11 +76,13 @@ export async function POST(request: Request) {
     );
   }
 
-  mockDb.drafts.set(body.projectId, output);
-  upsertWorkflowState(body.projectId, {
+  const saved = await projectStore.saveDraft(body.projectId, output, {
     draftContent: output.content,
     hasGeneratedDraft: true
   });
+  if (!saved) {
+    return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+  }
 
   return NextResponse.json({
     data: {

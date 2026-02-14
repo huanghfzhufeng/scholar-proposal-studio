@@ -1,11 +1,13 @@
 import { NextResponse } from 'next/server';
-import { mockDb, nowIso, upsertProject } from '@/lib/server/mock-db';
+import { projectStore } from '@/lib/server/project-store';
 
 export async function GET() {
+  const groups = await projectStore.listProjectGroups();
+
   return NextResponse.json({
     data: {
-      active: Array.from(mockDb.projects.values()).filter((item) => !item.deletedAt),
-      archived: Array.from(mockDb.projects.values()).filter((item) => Boolean(item.deletedAt))
+      active: groups.active,
+      archived: groups.archived
     }
   });
 }
@@ -13,16 +15,7 @@ export async function GET() {
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => ({}))) as { title?: string };
   const title = body.title?.trim() || `未命名课题-${Date.now()}`;
-  const now = nowIso();
-
-  const project = upsertProject({
-    id: crypto.randomUUID(),
-    title,
-    status: 'INTERVIEW',
-    deletedAt: null,
-    createdAt: now,
-    updatedAt: now
-  });
+  const project = await projectStore.createProject(title);
 
   return NextResponse.json({ data: project }, { status: 201 });
 }

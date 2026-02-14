@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { mockDb, nowIso, upsertProject } from '@/lib/server/mock-db';
+import { projectStore } from '@/lib/server/project-store';
 
 type Params = {
   params: { id: string };
@@ -7,40 +7,33 @@ type Params = {
 
 export async function DELETE(_request: Request, context: Params) {
   const { id } = context.params;
-  const existing = mockDb.projects.get(id);
+  const updated = await projectStore.updateProject(id, {
+    deletedAt: new Date().toISOString()
+  });
 
-  if (!existing) {
+  if (!updated) {
     return NextResponse.json({ error: 'Project not found' }, { status: 404 });
   }
-
-  const updated = upsertProject({
-    ...existing,
-    deletedAt: nowIso(),
-    updatedAt: nowIso()
-  });
 
   return NextResponse.json({ data: updated });
 }
 
 export async function PATCH(request: Request, context: Params) {
   const { id } = context.params;
-  const existing = mockDb.projects.get(id);
-
-  if (!existing) {
-    return NextResponse.json({ error: 'Project not found' }, { status: 404 });
-  }
-
   const body = (await request.json().catch(() => ({}))) as {
     title?: string;
     status?: string;
   };
+  const normalizedTitle = typeof body.title === 'string' ? body.title.trim() : undefined;
 
-  const updated = upsertProject({
-    ...existing,
-    title: body.title?.trim() || existing.title,
-    status: body.status || existing.status,
-    updatedAt: nowIso()
+  const updated = await projectStore.updateProject(id, {
+    title: normalizedTitle || undefined,
+    status: body.status
   });
+
+  if (!updated) {
+    return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+  }
 
   return NextResponse.json({ data: updated });
 }

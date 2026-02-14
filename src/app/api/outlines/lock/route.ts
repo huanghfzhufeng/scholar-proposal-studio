@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { mockDb } from '@/lib/server/mock-db';
+import { projectStore } from '@/lib/server/project-store';
 
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => ({}))) as {
@@ -12,7 +12,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'projectId is required' }, { status: 400 });
   }
 
-  mockDb.lockedOutlines.set(body.projectId, body.outline || { outlineId: body.outlineId });
+  const saved = await projectStore.saveLockedOutline(body.projectId, body.outline || { outlineId: body.outlineId });
+  if (!saved) {
+    return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+  }
 
   return NextResponse.json({
     data: {

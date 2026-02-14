@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { mockDb, nowIso, upsertProject, upsertWorkflowState } from '@/lib/server/mock-db';
+import { projectStore } from '@/lib/server/project-store';
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
@@ -15,7 +15,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'projectId is required' }, { status: 400 });
   }
 
-  const project = mockDb.projects.get(body.projectId);
+  const project = await projectStore.getProject(body.projectId);
   if (!project) {
     return NextResponse.json({ error: 'Project not found' }, { status: 404 });
   }
@@ -23,16 +23,20 @@ export async function POST(request: Request) {
   const nextScore = typeof body.sufficiencyScore === 'number' ? clamp(Math.round(body.sufficiencyScore), 0, 100) : 80;
   const summary = body.summary?.trim() || '访谈已结束，可进入大纲生成阶段。';
 
-  upsertWorkflowState(body.projectId, {
+  const savedState = await projectStore.saveWorkflowState(body.projectId, {
     interviewSummary: summary,
     sufficiencyScore: nextScore
   });
+  if (!savedState) {
+    return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+  }
 
-  const updatedProject = upsertProject({
-    ...project,
-    status: 'OUTLINE_CANDIDATES',
-    updatedAt: nowIso()
+  const updatedProject = await projectStore.updateProject(body.projectId, {
+    status: 'OUTLINE_CANDIDATES'
   });
+  if (!updatedProject) {
+    return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+  }
 
   return NextResponse.json({
     data: {

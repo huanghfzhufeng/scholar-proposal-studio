@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getWorkflowState, mockDb, nowIso, upsertProject, upsertWorkflowState } from '@/lib/server/mock-db';
+import { projectStore } from '@/lib/server/project-store';
 import type { WorkflowStatePatch } from '@/shared/workflow-state';
 
 type Params = {
@@ -9,32 +9,26 @@ type Params = {
 export async function GET(_request: Request, context: Params) {
   const { id } = context.params;
 
-  const project = mockDb.projects.get(id);
-
-  if (!project) {
+  const state = await projectStore.getProjectState(id);
+  if (!state) {
     return NextResponse.json({ error: 'Project not found' }, { status: 404 });
   }
 
   return NextResponse.json({
     data: {
-      project,
-      interview: mockDb.interviews.get(id) || null,
-      outlines: mockDb.outlines.get(id) || null,
-      lockedOutline: mockDb.lockedOutlines.get(id) || null,
-      sources: mockDb.retrievals.get(id)?.items || [],
-      draft: mockDb.drafts.get(id) || null,
-      workflowState: getWorkflowState(id)
+      project: state.project,
+      interview: state.interview,
+      outlines: state.outlines,
+      lockedOutline: state.lockedOutline,
+      sources: state.sources,
+      draft: state.draft,
+      workflowState: state.workflowState
     }
   });
 }
 
 export async function PATCH(request: Request, context: Params) {
   const { id } = context.params;
-  const project = mockDb.projects.get(id);
-
-  if (!project) {
-    return NextResponse.json({ error: 'Project not found' }, { status: 404 });
-  }
 
   const body = (await request.json().catch(() => ({}))) as {
     workflowState?: WorkflowStatePatch;
@@ -46,17 +40,15 @@ export async function PATCH(request: Request, context: Params) {
     return NextResponse.json({ error: 'workflowState is required' }, { status: 400 });
   }
 
-  const saved = upsertWorkflowState(id, workflowState);
-
-  upsertProject({
-    ...project,
-    updatedAt: nowIso()
-  });
+  const saved = await projectStore.saveWorkflowState(id, workflowState);
+  if (!saved) {
+    return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+  }
 
   return NextResponse.json({
     data: {
-      projectId: id,
-      savedAt: saved.updatedAt
+      projectId: saved.projectId,
+      savedAt: saved.savedAt
     }
   });
 }

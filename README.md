@@ -14,6 +14,8 @@
 
 ```bash
 npm install
+npx prisma generate
+npx prisma migrate dev
 npm run dev
 ```
 
@@ -27,3 +29,4 @@ cp .env.example .env.local
 
 - 若不填写 API Key，系统将自动使用本地降级逻辑（mock）运行。
 - 若填写并开启 `USE_REAL_LLM/USE_REAL_SEARCH`，将走真实服务调用。
+- 若配置 `DATABASE_URL` 且 `USE_PRISMA_STORAGE=true`，后端将使用 PostgreSQL 持久化存储。

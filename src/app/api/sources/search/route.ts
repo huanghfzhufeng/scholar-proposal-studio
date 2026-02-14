@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { RetrievalAgent } from '@/agents/retrieval';
-import { upsertRetrievalItems } from '@/lib/server/mock-db';
+import { projectStore } from '@/lib/server/project-store';
 
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => ({}))) as {
@@ -16,7 +16,8 @@ export async function POST(request: Request) {
   });
 
   if (body.projectId) {
-    upsertRetrievalItems(body.projectId, output.items);
+    const items = await projectStore.replaceSources(body.projectId, output.items);
+    return NextResponse.json({ data: { items } });
   }
 
   return NextResponse.json({ data: output });

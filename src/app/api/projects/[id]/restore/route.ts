@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { mockDb, nowIso, upsertProject } from '@/lib/server/mock-db';
+import { projectStore } from '@/lib/server/project-store';
 
 type Params = {
   params: { id: string };
@@ -7,17 +7,13 @@ type Params = {
 
 export async function POST(_request: Request, context: Params) {
   const { id } = context.params;
-  const existing = mockDb.projects.get(id);
+  const updated = await projectStore.updateProject(id, {
+    deletedAt: null
+  });
 
-  if (!existing) {
+  if (!updated) {
     return NextResponse.json({ error: 'Project not found' }, { status: 404 });
   }
-
-  const updated = upsertProject({
-    ...existing,
-    deletedAt: null,
-    updatedAt: nowIso()
-  });
 
   return NextResponse.json({ data: updated });
 }

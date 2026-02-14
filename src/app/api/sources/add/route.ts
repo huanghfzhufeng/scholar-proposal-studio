@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { addManualRetrievalItem } from '@/lib/server/mock-db';
+import { projectStore } from '@/lib/server/project-store';
 
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => ({}))) as {
@@ -17,7 +17,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'projectId, title, url are required' }, { status: 400 });
   }
 
-  const item = addManualRetrievalItem(body.projectId, {
+  const item = await projectStore.addManualSource(body.projectId, {
     title: body.title,
     url: body.url,
     source: body.source || 'Manual Entry',
@@ -26,6 +26,10 @@ export async function POST(request: Request) {
     sectionKey: body.sectionKey || '研究内容',
     score: body.score ?? 80
   });
+
+  if (!item) {
+    return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+  }
 
   return NextResponse.json({ data: item }, { status: 201 });
 }

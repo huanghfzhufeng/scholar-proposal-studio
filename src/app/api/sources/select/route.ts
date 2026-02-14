@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { updateRetrievalItem } from '@/lib/server/mock-db';
+import { projectStore } from '@/lib/server/project-store';
 
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => ({}))) as {
@@ -13,7 +13,7 @@ export async function POST(request: Request) {
   }
 
   const selected = Boolean(body.selected);
-  const items = updateRetrievalItem(body.projectId, body.sourceId, selected);
+  const items = await projectStore.updateSourceSelection(body.projectId, body.sourceId, selected);
 
   return NextResponse.json({
     data: {
